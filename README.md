@@ -28,6 +28,23 @@ streamlit run admin/app.py --server.port 8502   # 관리자 (로그인: backend/
 - 문자 발송은 `SMS_DRY_RUN=true`(기본)이면 실제 전송 없이 기록만 남깁니다.
 - 자세한 계획과 체크리스트: `docs/PRODUCTION_PLAN.md`
 
+## Streamlit Community Cloud 배포 (user·admin 각각)
+
+같은 저장소에서 앱 두 개를 따로 만듭니다. <https://share.streamlit.io> → **Create app** → *Deploy a public app from GitHub* 에서 두 번 반복하세요.
+
+| 앱 | Repository | Branch | Main file path | 권장 URL |
+|---|---|---|---|---|
+| 사용자 | `seongholim-11/table-order` | `main` | `user/app.py` | `…-user.streamlit.app` |
+| 관리자 | `seongholim-11/table-order` | `main` | `admin/app.py` | `…-admin.streamlit.app` |
+
+- 의존성은 루트 `requirements.txt`, 테마는 루트 `.streamlit/config.toml` 을 두 앱이 함께 씁니다. Python 버전은 Advanced settings 에서 3.11 이상을 고르세요.
+- Advanced settings → **Secrets** (TOML, 최상위 키는 환경 변수로도 읽힙니다):
+  - 둘 다 더미로만 시연: `DATA_SOURCE = "dummy"`
+  - 관리자 더미 로그인 토큰 바꾸기: `ADMIN_TOKEN = "원하는-비밀번호"` (기본값 `change-me` 는 공개 배포 시 반드시 변경)
+  - 실제 백엔드 연결: `DATA_SOURCE = "api"` 와 `API_URL = "https://백엔드-주소"` (FastAPI 서버는 Streamlit Cloud 에서 돌릴 수 없으니 Render/Fly.io 등에 따로 배포하고, 그 `CORS_ORIGINS`·`PUBLIC_BASE_URL` 에 두 앱 주소를 넣으세요)
+- `DATA_SOURCE=auto`(기본)에서 `127.0.0.1` 서버는 클라우드에서 닿지 않으므로 자동으로 더미로 동작합니다. 의도를 분명히 하려면 `dummy` 를 명시하세요.
+- 사용자 페이지는 `?table=12` 로 테이블을 지정합니다. 테이블별 QR 은 배포된 사용자 앱 주소 뒤에 이 값을 붙여 만드세요.
+
 ## 데이터 소스 전환 (더미 ↔ API)
 
 화면(user·admin)의 데이터는 모두 **저장소 한 곳**을 거칩니다. 환경 변수 `DATA_SOURCE` 로 바꿉니다.

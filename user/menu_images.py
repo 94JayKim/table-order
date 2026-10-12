@@ -10,7 +10,10 @@ PHOTO_IDS = frozenset({
     "c1", "c1-seasoned", "c1-halfhalf", "c2", "c3", "c4", "c5", "c6", "c7",
     *(f"a{i}" for i in range(1, 12)),
     *(f"s{i}" for i in range(1, 6)),
-    *(f"d{i}" for i in range(3, 9)), "b1",
+    *(f"d{i}" for i in range(1, 9)),
+    *(f"b{i}" for i in range(1, 10)),
+    *(f"j{i}" for i in range(1, 8)),
+    "j5-grapefruit", "j5-ginger", "j6-grape", "j6-peach",
 })
 PHOTO_ALIASES = {
     "c1-whole-seasoned": "c1-seasoned",
@@ -20,7 +23,6 @@ PHOTO_ALIASES = {
     "c1-half-halfhalf": "c1-halfhalf",
     "a2-medium": "a2", "a2-hot": "a2",
     "a3-medium": "a3", "a3-hot": "a3",
-    "b4": "b1",
 }
 
 
@@ -42,6 +44,8 @@ def menu_image_html(item, photo_class="menu-photo", fallback_class=None):
         photo_id = PHOTO_ALIASES.get(item["id"], item["id"])
         source = _photo_uri(photo_id) if photo_id in PHOTO_IDS else None
     if source:
+        if item.get("cat") in {"beer", "soju"} or item["id"] in {"d1", "d2"}:
+            photo_class += " beverage-photo"
         return (f'<img class="{escape(photo_class, quote=True)}" '
                 f'src="{escape(source, quote=True)}" '
                 f'alt="{escape(item["name"], quote=True)}" '

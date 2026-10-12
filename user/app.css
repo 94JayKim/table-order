@@ -43,6 +43,7 @@ button:focus-visible { outline: 3px solid #ffcf54 !important; outline-offset: 3p
 .thumb { height: 176px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 72px; position: relative; overflow: hidden; }
 .thumb.big { height: 240px; font-size: 110px; }
 .thumb > .menu-photo { display: block; width: 100%; height: 100%; object-fit: cover; }
+.thumb > .beverage-photo { object-fit: contain; background: #171414; }
 .thumb .badges { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; flex-wrap: wrap; gap: 4px; }
 .badge { font-size: 10px; font-weight: 800; padding: 3px 6px; border-radius: 6px; color: #fff; line-height: 1.4; }
 .badge.BEST { background: #ce2938; } .badge.NEW { background: #187a45; } .badge.spicy { background: #bc4900; }

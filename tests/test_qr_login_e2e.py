@@ -132,7 +132,7 @@ def test_without_server_roulette_explains_and_guest_order_still_works():
         app.run()
         assert not app.exception and ss(app)["table"] == 7
         app.button(key="roulette_btn").click().run()
-        assert any("서버에 연결할 수 없어" in e.value for e in app.error) and not ss(app)["members"]
+        assert any("서버에 연결할 수 없어요" in h.value for h in app.get("html")) and not ss(app)["members"]
         app.button(key="start_btn").click().run()  # 비회원 주문은 서버 없이도 가능
         assert not app.exception
     finally:

@@ -155,8 +155,74 @@ class DummyBackend:
                 "ai": {"recommendations": shown, "ai_orders": ai, "hit_rate": round(ai / shown, 3),
                        "definition": "AI 조합이 포함된 주문 수 / 추천이 노출된 횟수 (임시 기준)"}}
 
-    # ---- 문자 발송: 실제 발송은 서버가 필요하다 ----------------------------------------
-    def _no_sms(self, *a, **kw):
-        raise Unsupported("문자 발송은 서버(DATA_SOURCE=api)가 필요해요.")
+    # ---- 문자 발송: 서버 SmsService 와 같은 규칙·같은 JSON 으로 흉내만 낸다 (실제 전송 없음) ----------------------
+    SMS_LIMIT = {"SMS": 100, "LMS": 20}
+    STORE_NAME = "역전할머니맥주"
+    OPT_OUT_NUMBER = "080-000-0000"
+    GRADE_RULE = {"repeat": 2, "regular": 5, "dormant": 60}
 
-    sms_usage = sms_preview = sms_send = sms_logs = opt_out = _no_sms
+    def _seed_sms_logs(self):
+        """화면이 비어 보이지 않도록 이번 달 발송 기록 몇 건을 미리 넣어 둔다."""
+        month = TODAY.strftime("%Y-%m")
+        kst = timezone(timedelta(hours=9))
+        rows = [(2, "SMS", "휴면 고객 재방문 이벤트", 14, "dry_run", None), (4, "SMS", "신메뉴 먹태구이 출시 안내", 9, "dry_run", None),
+                (7, "LMS", "추석 연휴 영업시간 안내와 단골 감사 쿠폰 발행 소식을 알려드립니다. 방문 시 쿠폰을 보여주세요.", 6, "dry_run", None),
+                (9, "SMS", "주말 생맥주 1+1 이벤트", 12, "failed", "HTTP 401 인증 오류 (더미)"),
+                (10, "SMS", "금요일 단골 안주 10% 할인", 15, "dry_run", None)]
+        self.sms_logs_ = [{"id": i, "ts": _iso(datetime(TODAY.year, TODAY.month, day, 15, 30, tzinfo=kst)), "month": month,
+                           "request_id": None if status == "failed" else f"dryrun-seed{i:04d}", "type": kind,
+                           "content": f"(광고){self.STORE_NAME}\n{text}\n무료수신거부 {self.OPT_OUT_NUMBER}",
+                           "target_count": n, "status": status, "error": err}
+                          for i, (day, kind, text, n, status, err) in enumerate(rows, 1)]
+        self.sms_logs_.reverse()  # 서버처럼 최신 기록이 먼저
+
+    def _sms_targets(self, grades):
+        return [m for m in self.members_ if m["marketing_consent"] and not m["opted_out"]
+                and _grade(m["visit_count"], m["last_visit"], self.GRADE_RULE) in grades]
+
+    def sms_usage(self) -> dict:
+        if not hasattr(self, "sms_logs_"):
+            self._seed_sms_logs()
+        used = {"SMS": 0, "LMS": 0}
+        for log in self.sms_logs_:
+            if log["status"] in ("sent", "dry_run"):
+                used[log["type"]] += log["target_count"]
+        return {"month": TODAY.strftime("%Y-%m"), "used": used, "limit": dict(self.SMS_LIMIT)}
+
+    def sms_preview(self, grades: list, body: str) -> dict:
+        text = f"(광고){self.STORE_NAME}\n{body.strip()}\n무료수신거부 {self.OPT_OUT_NUMBER}"
+        size = sum(1 if ord(ch) < 128 else 2 for ch in text)
+        kind = "SMS" if size <= 90 else "LMS"
+        usage = self.sms_usage()
+        remaining = usage["limit"][kind] - usage["used"][kind]
+        targets = self._sms_targets(grades)
+        problems = []
+        if not body.strip():
+            problems.append("본문이 비어 있습니다.")
+        if not targets:
+            problems.append("발송 대상이 없습니다. (휴대폰 번호 입력 + 수신 동의 + 수신거부 아님)")
+        if len(targets) > remaining:
+            problems.append(f"이번 달 {kind} 무료 잔여 {max(remaining, 0)}건보다 대상({len(targets)}명)이 많습니다.")
+        # 야간(21~08시) 제한은 데모에서는 적용하지 않는다 (서버는 적용)
+        return {"type": kind, "bytes": size, "content": text, "targets": len(targets), "remaining": remaining,
+                "problems": problems, "ok": not problems, "dry_run": True}
+
+    def sms_send(self, grades: list, body: str) -> dict:
+        plan = self.sms_preview(grades, body)
+        if not plan["ok"]:
+            raise Unsupported("; ".join(plan["problems"]))
+        rid = f"dryrun-{len(self.sms_logs_) + 1:04d}"
+        self.sms_logs_.insert(0, {"id": len(self.sms_logs_) + 1, "ts": _iso(datetime.now(timezone.utc)),
+                                  "month": TODAY.strftime("%Y-%m"), "request_id": rid, "type": plan["type"],
+                                  "content": plan["content"], "target_count": plan["targets"], "status": "dry_run", "error": None})
+        return {"request_id": rid, "count": plan["targets"], "dry_run": True}
+
+    def sms_logs(self) -> list:
+        self.sms_usage()
+        return [dict(x) for x in self.sms_logs_]
+
+    def opt_out(self, member_id: int) -> dict:
+        member = next((m for m in self.members_ if m["id"] == member_id), None)
+        if member:
+            member["opted_out"] = True
+        return {"id": member_id, "opted_out": True}

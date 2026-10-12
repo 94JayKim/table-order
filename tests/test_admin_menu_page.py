@@ -189,3 +189,49 @@ def test_repository_validations_on_both_backends(server):
         repo.backend.delete_menu(menu_id)
         repo.delete_category(new_id)
         assert len(repo.category_list()) == before
+
+
+# ---- 저장 전 되돌리기 버튼 ------------------------------------------------------------------------------
+def test_menu_editor_undo_button_sits_next_to_save_and_is_disabled_without_changes(monkeypatch):
+    app = open_menu_page(monkeypatch, "dummy")
+    pick(app, "chicken")
+    assert app.button(key="menu_save").label == "변경 저장"
+    assert app.button(key="menu_undo").label == "↩ 되돌리기" and app.button(key="menu_undo").disabled
+
+
+def test_weights_page_shows_photo_cards_with_plus_minus_and_undo(monkeypatch):
+    app = open_menu_page(monkeypatch, "dummy")
+    app.sidebar.radio[0].set_value("추천 가중치").run()
+    assert not app.exception
+    assert len([b for b in app.button if str(b.key).startswith("winc_")]) == len(app.session_state["repo"].menus())  # 메뉴마다 + / − 버튼
+    assert any('class="wthumb"' in h.value for h in app.get("html"))  # 주문 화면처럼 사진(썸네일) 카드
+    assert app.button(key="weights_undo").disabled
+    app.button(key="winc_c1").click().run()
+    app.button(key="winc_c1").click().run()
+    app.button(key="wdec_c2").click().run()
+    assert app.session_state["w_c1"] == 60 and app.session_state["w_c2"] == 45
+    assert not app.button(key="weights_undo").disabled  # 변경하면 켜진다
+    app.button(key="weights_undo").click().run()
+    assert not app.exception
+    assert app.session_state["w_c1"] == 50 and app.session_state["w_c2"] == 50 and app.button(key="weights_undo").disabled
+
+
+def test_weights_save_persists_changes(monkeypatch):
+    app = open_menu_page(monkeypatch, "dummy")
+    app.sidebar.radio[0].set_value("추천 가중치").run()
+    app.button(key="winc_c1").click().run()
+    next(b for b in app.button if b.label == "가중치 저장").click().run()
+    assert not app.exception
+    assert int(app.session_state["repo"].menus().set_index("id").at["c1", "추천 가중치"]) == 55
+    assert app.button(key="weights_undo").disabled
+
+
+def test_grade_rule_reset_returns_to_defaults(monkeypatch):
+    app = open_menu_page(monkeypatch, "dummy")
+    app.sidebar.radio[0].set_value("고객 등급").run()
+    assert app.button(key="rule_reset").disabled
+    app.number_input(key="rule_dormant").set_value(120).run()
+    assert not app.button(key="rule_reset").disabled
+    app.button(key="rule_reset").click().run()
+    assert not app.exception
+    assert app.number_input(key="rule_dormant").value == ar.DEFAULT_RULE["dormant"] and app.button(key="rule_reset").disabled

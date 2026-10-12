@@ -4,6 +4,7 @@
 (자세한 설명은 admin_repository.py 맨 위). 이 파일에는 데이터 출처에 대한 코드가 없다.
 """
 
+from datetime import datetime, timedelta, timezone
 from html import escape
 from pathlib import Path
 
@@ -12,6 +13,7 @@ import streamlit as st
 
 import admin_repository as repo_mod
 from admin_dummy_data import Unsupported
+from order_filters import AI_ALL, AI_CHOICES, filter_orders
 from admin_repository import COLOR_PRESETS, DEFAULT_RULE, GRADES, ICON_DEFAULT, SPICY_LABELS, CategoryError
 
 st.set_page_config(page_title="식당도우미 관리자", page_icon="🍺", layout="wide", initial_sidebar_state="expanded")
@@ -145,6 +147,10 @@ def render_category_panel(repo, cats):
                     name = st.text_input("이름", value=selected["name"])
                     icon = st.text_input("아이콘 (이모지)", value=selected["icon"], max_chars=4)
                     color = st.selectbox("색상", ["(그대로)"] + list(COLOR_PRESETS))
+                    f_undo = st.form_submit_button("↩ 되돌리기", width="stretch",
+                                                   help="입력한 값을 지우고 저장된 값으로 돌립니다")
+                    if f_undo:
+                        st.rerun()
                     if st.form_submit_button("수정 저장", width="stretch"):
                         try:
                             repo.update_category(selected["id"], name, icon, None if color == "(그대로)" else color)
@@ -224,8 +230,16 @@ def render_menu_panel(repo, cats):
             "세트 가능": st.column_config.CheckboxColumn(),
         })
     st.caption("표에서 직접 고치거나 행을 추가·삭제한 뒤 저장하세요.")
-    if st.button("변경 저장", type="primary", key="menu_save"):
-        new = edited.reset_index(drop=True)
+    new = edited.reset_index(drop=True)
+    dirty = not new.equals(old)
+    c_save, c_undo, _ = st.columns([1, 1.3, 5])
+    undo = c_undo.button("↩ 되돌리기", key="menu_undo", width="stretch", disabled=not dirty,
+                         help="저장하기 전의 수정·추가·삭제를 모두 취소하고 저장된 상태로 돌립니다")
+    if undo:
+        ss["menu_editor_v"] += 1  # 편집 표를 새로 만들어 저장된 값으로 되돌린다
+        st.toast("저장하지 않은 변경을 되돌렸어요.", icon="↩️")
+        st.rerun()
+    if c_save.button("변경 저장", type="primary", key="menu_save", width="stretch"):
         new["카테고리"] = category["name"]  # 표에서 새로 추가한 행도 이 카테고리에 들어간다
         try:
             r = repo.save_menus(new, old)
@@ -249,20 +263,74 @@ def page_menu(repo):
         render_menu_panel(repo, cats)
 
 
+WEIGHT_STEP = 5
+
+
+def weight_change(key, delta):
+    ss[key] = min(100, max(0, ss[key] + delta))
+
+
+def weight_thumb(menu_row, visual):
+    """주문 화면처럼 메뉴 사진(없으면 이모지+카테고리 색)을 보여주는 썸네일."""
+    c1, c2 = visual["colors"]
+    sold = "" if menu_row["판매 여부"] else '<div class="soldout">품절</div>'
+    if visual["image_url"]:
+        inner = f'<img src="{escape(visual["image_url"], quote=True)}" alt="{escape(menu_row["메뉴명"], quote=True)}" loading="lazy">'
+    else:
+        inner = visual["emoji"]
+    return f'<div class="wthumb" style="background:linear-gradient(135deg,{c1},{c2})">{inner}{sold}</div>'
+
+
 def page_weights(repo):
-    page_head("추천 가중치", "0~100. 높을수록 AI 추천 조합에 우선 반영됩니다. 50이 기본값입니다.")
+    page_head("추천 가중치", "메뉴 사진 아래 + / − 로 조절하세요. 0~100, 높을수록 AI 추천 조합에 우선 반영돼요 (기본 50).")
     menu = repo.menus()
+    visuals = repo.menu_visuals()
     cat = st.selectbox("카테고리", ["전체"] + [c["name"] for c in repo.categories()])
     view = menu if cat == "전체" else menu[menu["카테고리"] == cat]
+    # 가중치 상태: 다른 화면(메뉴 관리 등)에서 저장값이 바뀌었으면 그 값으로 다시 시작한다
+    for _, row in menu.iterrows():
+        key, base = f"w_{row['id']}", f"wbase_{row['id']}"
+        if key not in ss or ss.get(base) != int(row["추천 가중치"]):
+            ss[key], ss[base] = int(row["추천 가중치"]), int(row["추천 가중치"])
     new = menu.copy()
-    for idx, row in view.iterrows():
-        c1, c2 = st.columns([2, 3])
-        c1.write(f"**{row['메뉴명']}**" + ("" if row["판매 여부"] else " (품절)"))
-        new.at[idx, "추천 가중치"] = c2.slider(row["메뉴명"], 0, 100, int(row["추천 가중치"]), 5,
-                                           key=f"w_{row['id']}", label_visibility="collapsed")
-    if st.button("가중치 저장", type="primary"):
+    for idx, row in menu.iterrows():
+        new.at[idx, "추천 가중치"] = ss[f"w_{row['id']}"]
+    dirty = not new["추천 가중치"].equals(menu["추천 가중치"])
+
+    with st.container(horizontal=True, key="wgrid"):
+        for _, row in view.iterrows():
+            key, saved = f"w_{row['id']}", int(row["추천 가중치"])
+            with st.container(key=f"wcard_{row['id']}"):
+                st.html(weight_thumb(row, visuals.get(row["id"], {"emoji": "🍽️", "image_url": "", "colors": ["#a29bfe", "#6c5ce7"]}))
+                        + f'<div class="wname">{escape(row["메뉴명"])}</div>'
+                        f'<div class="wprice">{row["가격"]:,}원</div>')
+                c1, c2, c3 = st.columns([1, 1.3, 1], vertical_alignment="center", wrap=False)
+                c1.button("−", key=f"wdec_{row['id']}", width="stretch", on_click=weight_change, args=(key, -WEIGHT_STEP),
+                          disabled=ss[key] <= 0, help=f"{row['메뉴명']} 가중치 낮추기")
+                changed = " changed" if ss[key] != saved else ""
+                c2.html(f'<div class="wval{changed}"><b>{ss[key]}</b><small>저장값 {saved}</small></div>')
+                c3.button("+", key=f"winc_{row['id']}", width="stretch", on_click=weight_change, args=(key, WEIGHT_STEP),
+                          disabled=ss[key] >= 100, help=f"{row['메뉴명']} 가중치 높이기")
+
+    def undo_weights():
+        for key in [k for k in ss if str(k).startswith(("w_", "wbase_"))]:
+            del ss[key]  # 저장된 값으로 다시 시작한다
+        st.toast("저장하지 않은 변경을 되돌렸어요.", icon="↩️")
+
+    sec_title("변경 사항", f"{int((new['추천 가중치'] != menu['추천 가중치']).sum())}개 메뉴 수정됨")
+    c_save, c_undo, _ = st.columns([1.2, 1.3, 5])
+    c_undo.button("↩ 되돌리기", key="weights_undo", width="stretch", disabled=not dirty, on_click=undo_weights,
+                  help="저장하기 전의 가중치 변경을 모두 취소하고 저장된 값으로 돌립니다")
+    if c_save.button("가중치 저장", type="primary", width="stretch"):
         r = repo.save_menus(new, menu)
         st.toast(f"저장했습니다. (수정 {r['saved']}개)", icon="✅")
+        st.rerun()  # 저장된 값을 기준으로 다시 그린다 (되돌리기 버튼 상태 갱신)
+
+
+def reset_rule():
+    ss["grade_rule"] = dict(DEFAULT_RULE)
+    for key in ("rule_repeat", "rule_regular", "rule_dormant"):
+        ss.pop(key, None)
 
 
 def page_customers(repo):
@@ -270,9 +338,11 @@ def page_customers(repo):
     rule = ss["grade_rule"]
     with st.expander("등급 분류 기준 (임시 — 추가 정의 필요)", expanded=True):
         c1, c2, c3 = st.columns(3)
-        rule["repeat"] = c1.number_input("재방문: 방문 횟수 ≥", 2, 50, rule["repeat"])
-        rule["regular"] = c2.number_input("단골: 방문 횟수 ≥", rule["repeat"] + 1, 100, max(rule["regular"], rule["repeat"] + 1))
-        rule["dormant"] = c3.number_input("휴면: 마지막 방문 후 N일 이상", 7, 365, rule["dormant"])
+        rule["repeat"] = c1.number_input("재방문: 방문 횟수 ≥", 2, 50, rule["repeat"], key="rule_repeat")
+        rule["regular"] = c2.number_input("단골: 방문 횟수 ≥", rule["repeat"] + 1, 100, max(rule["regular"], rule["repeat"] + 1), key="rule_regular")
+        rule["dormant"] = c3.number_input("휴면: 마지막 방문 후 N일 이상", 7, 365, rule["dormant"], key="rule_dormant")
+        st.button("↩ 기본값으로 되돌리기", key="rule_reset", disabled=rule == DEFAULT_RULE, on_click=reset_rule,
+                  help="등급 분류 기준을 처음 값으로 돌립니다")
         st.caption("그 외(방문 1회)는 신규 고객입니다. 이 값은 화면에서 미리 보는 용도이고 서버에는 저장되지 않아요.")
     cust = repo.members(rule)
     kpi_row(*[kpi(f"{g} 고객", int((cust["등급"] == g).sum()), "명") for g in GRADES])
@@ -281,8 +351,57 @@ def page_customers(repo):
     st.dataframe(cust[cust["등급"].isin(pick)], hide_index=True, width="stretch")
 
 
+ORDER_FILTER_KEYS = ("of_preset", "of_period", "of_tables", "of_keyword", "of_ai", "of_min", "of_max")
+PERIOD_PRESETS = ["전체 기간", "오늘", "최근 7일", "최근 30일", "직접 선택"]
+
+
+def reset_order_filters():
+    for key in ORDER_FILTER_KEYS:
+        ss.pop(key, None)
+
+
+def period_bounds(preset, orders, picked):
+    """기간 선택 → (시작일, 끝일). 제한이 없으면 (None, None). 기준일은 가장 최근 주문일."""
+    last = orders["주문 시각"].max().date()
+    days = {"오늘": 0, "최근 7일": 6, "최근 30일": 29}
+    if preset in days:
+        return last - timedelta(days=days[preset]), last
+    if preset == "직접 선택":
+        picked = tuple(picked) if isinstance(picked, (tuple, list)) else (picked,)
+        if len(picked) == 2:
+            return picked
+        if len(picked) == 1:
+            return picked[0], picked[0]  # 하루만 고르면 그날 하루
+    return None, None
+
+
+def render_order_filters(orders):
+    """주문 이력 필터 패널. 조건에 맞는 주문만 돌려준다."""
+    with st.container(border=True, key="order_filters"):
+        head, clear = st.columns([5, 1.3], vertical_alignment="center")
+        head.html('<div class="mcat-title" style="margin:0">🔎 필터</div>')
+        lo, hi = orders["주문 시각"].min().date(), orders["주문 시각"].max().date()
+        c1, c2, c3 = st.columns([1.2, 1.8, 1.2])
+        preset = c1.selectbox("기간", PERIOD_PRESETS, key="of_preset", help="기준일은 가장 최근 주문일이에요")
+        picked = None
+        if preset == "직접 선택":
+            picked = c1.date_input("날짜 범위", value=(lo, hi), min_value=lo, max_value=hi, key="of_period")
+        tables = c2.multiselect("테이블", sorted(orders["테이블"].unique()), key="of_tables", placeholder="전체 테이블",
+                                format_func=lambda n: f"{n}번")
+        ai = c3.selectbox("AI 추천", AI_CHOICES, key="of_ai")
+        c4, c5, c6 = st.columns([2, 1, 1])
+        keyword = c4.text_input("검색", key="of_keyword", placeholder="닉네임 · 메뉴 이름 · 주문번호")
+        min_amount = c5.number_input("최소 금액", 0, step=1000, value=0, key="of_min")
+        max_amount = c6.number_input("최대 금액 (0 = 제한 없음)", 0, step=1000, value=0, key="of_max")
+        active = preset != PERIOD_PRESETS[0] or tables or keyword.strip() or ai != AI_ALL or min_amount or max_amount
+        clear.button("↩ 필터 초기화", key="of_reset", width="stretch", disabled=not active, on_click=reset_order_filters)
+    start, end = period_bounds(preset, orders, picked)
+    return filter_orders(orders, start=start, end=end, tables=tables, keyword=keyword, ai=ai,
+                         min_amount=min_amount or None, max_amount=max_amount or None)
+
+
 def page_orders(repo):
-    page_head("주문 이력", "들어온 주문을 전체 또는 고객별로 확인해요")
+    page_head("주문 이력", "기간·테이블·메뉴·금액으로 주문을 골라 볼 수 있어요")
     orders = repo.orders()
     cust = repo.members(ss["grade_rule"]).set_index("customer_id")
     mode = st.radio("보기", ["전체 주문", "고객별 주문"], horizontal=True)
@@ -294,8 +413,81 @@ def page_orders(repo):
         orders = orders[orders["customer_id"] == who]
         kpi_row(kpi("누적 주문 금액", f"{int(orders['금액'].sum()):,}", "원"))
         st.html('<div style="height:16px"></div>')
-    st.dataframe(orders, hide_index=True, width="stretch",
+    if orders.empty:
+        st.info("조건에 맞는 주문이 없어요." if mode == "고객별 주문" else "아직 주문이 없어요.")
+        return
+    shown = render_order_filters(orders)
+    total = int(shown["금액"].sum())
+    kpi_row(kpi("조회된 주문", len(shown), "건", sub=f"전체 {len(orders)}건 중", accent=True),
+            kpi("합계 금액", f"{total:,}", "원"),
+            kpi("평균 주문금액", f"{total // len(shown):,}" if len(shown) else "-", "원" if len(shown) else ""),
+            kpi("AI 추천 사용", int(shown["AI 추천 사용"].sum()), "건"))
+    st.html('<div style="height:16px"></div>')
+    if shown.empty:
+        st.info("조건에 맞는 주문이 없어요. 필터를 바꿔 보세요.")
+        return
+    st.dataframe(shown, hide_index=True, width="stretch",
                  column_config={"금액": st.column_config.NumberColumn(format="%d원")})
+
+
+SMS_TEMPLATES = {
+    "💤 휴면 복귀": ("오랜만이에요! 이번 주 방문하시면 안주 10% 할인해 드려요.", ["휴면"]),
+    "🆕 신메뉴 안내": ("신메뉴 먹태구이가 나왔어요. 시원한 맥주와 함께 즐겨보세요!", ["신규", "재방문", "단골"]),
+    "🎁 단골 감사": ("항상 찾아주셔서 감사해요. 이번 주 방문 시 음료 1잔을 서비스로 드려요.", ["단골"]),
+}
+STATUS_LABEL = {"sent": ("발송됨", "ok"), "dry_run": ("테스트(DRY RUN)", "warn"), "failed": ("실패", "bad")}
+
+
+def use_sms_template(name):
+    body, grades = SMS_TEMPLATES[name]
+    ss["sms_body"], ss["sms_grades"] = body, grades
+
+
+def usage_card(label, used, limit):
+    pct = min(100, used / limit * 100) if limit else 0
+    tone = " hot" if pct >= 90 else ""
+    return (f'<div class="kpi"><div class="k">{escape(label)}</div>'
+            f'<div class="v">{used}<small>/ {limit}건</small></div>'
+            f'<div class="meter{tone}"><i style="width:{pct:.0f}%"></i></div>'
+            f'<div class="s">이번 달 무료 한도의 {pct:.0f}% 사용</div></div>')
+
+
+def phone_preview(plan, body_empty):
+    if body_empty or not plan:
+        bubble = '<div class="bubble empty">본문을 입력하면 실제 발송 문구가 여기에 보여요</div>'
+        meta = ""
+    else:
+        bubble = f'<div class="bubble">{escape(plan["content"]).replace(chr(10), "<br>")}</div>'
+        pct = min(100, plan["bytes"] / 90 * 100) if plan["type"] == "SMS" else 100
+        meta = (f'<div class="pmeta"><span class="pill">{plan["type"]}</span><span>{plan["bytes"]}바이트</span>'
+                f'<span class="pbar"><i style="width:{pct:.0f}%"></i></span></div>')
+    return (f'<div class="phone"><div class="notch"></div><div class="pscreen"><div class="pfrom">{"역전할머니맥주"}'
+            f'<small>광고 문자</small></div>{bubble}</div></div>{meta}')
+
+
+def kst_text(ts):
+    """서버가 주는 UTC 시각 문자열을 한국 시간 'YYYY-MM-DD HH:MM' 으로."""
+    try:
+        t = datetime.fromisoformat(str(ts))
+        t = t.replace(tzinfo=timezone.utc) if t.tzinfo is None else t
+        return t.astimezone(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        return str(ts)[:16]
+
+
+def sms_history(logs):
+    if not logs:
+        return '<div class="empty">아직 발송 내역이 없어요.</div>'
+    rows = ""
+    for log in logs:
+        label, tone = STATUS_LABEL.get(log["status"], (log["status"], "warn"))
+        text = escape(log["content"].split("\n")[1] if "\n" in log["content"] else log["content"])
+        err = f'<div class="herr">{escape(log["error"])}</div>' if log.get("error") else ""
+        rows += (f'<div class="hrow"><div class="ht">{kst_text(log["ts"])}</div>'
+                 f'<div class="hb"><div class="hmsg">{text}</div>{err}</div>'
+                 f'<span class="tag {tone}">{label}</span><span class="pill">{log["type"]}</span>'
+                 f'<div class="hn">{log["target_count"]}명</div></div>')
+    return f'<div class="history">{rows}</div>'
 
 
 def page_marketing(repo):
@@ -308,39 +500,55 @@ def page_marketing(repo):
     except (repo_mod.api.ApiError, repo_mod.api.ApiUnavailable) as e:
         st.error(f"서버에서 정보를 가져오지 못했습니다: {e}")
         return
+    members = repo.members(ss["grade_rule"])
+    pool = members[members["마케팅 수신 동의"] & ~members["수신거부"]]
+    st.html('<div class="kpis">'
+            + usage_card("이번 달 SMS", usage["used"]["SMS"], usage["limit"]["SMS"])
+            + usage_card("이번 달 LMS", usage["used"]["LMS"], usage["limit"]["LMS"])
+            + kpi("발송 가능 고객", len(pool), "명", sub=f"전체 회원 {len(members)}명 중 수신 동의", accent=True)
+            + kpi("수신거부", int(members["수신거부"].sum()), "명", sub="발송 대상에서 자동 제외") + "</div>")
+    if repo.source == "dummy":
+        st.caption("🧪 더미 데이터로 만든 화면이에요. 실제 문자는 전송되지 않고, 이 화면을 닫으면 발송 기록이 사라져요.")
     st.caption("수신 동의·휴대폰 번호가 있는 회원에게만, 야간(21~08시) 제외, 월 무료 한도 안에서 발송합니다. "
                "서버 설정 `SMS_DRY_RUN=true` 이면 실제 문자는 전송되지 않고 기록만 남습니다.")
-    kpi_row(kpi("이번 달 SMS", f"{usage['used']['SMS']} / {usage['limit']['SMS']}", "건"),
-            kpi("이번 달 LMS", f"{usage['used']['LMS']} / {usage['limit']['LMS']}", "건"))
-    st.html('<div style="height:16px"></div>')
 
-    grades = st.multiselect("대상 등급", GRADES, default=["휴면"])
-    body = st.text_area("본문", "오랜만이에요! 이번 주 방문하시면 안주 10% 할인해 드려요.")
-    plan = None
-    if grades:
-        try:
-            plan = repo.sms_preview(grades, body)
-        except repo_mod.api.ApiError as e:
-            st.error(f"미리보기에 실패했습니다: {e.detail}")
-    if plan:
-        st.text_area("실제 발송 문구 (광고 표기·수신거부 안내 자동 추가)", plan["content"], disabled=True, height=110)
-        st.caption(f"{plan['bytes']}바이트 → **{plan['type']}** · 발송 대상 {plan['targets']}명 · 잔여 {plan['remaining']}건"
-                   + (" · 🧪 DRY RUN (실제 전송 없음)" if plan["dry_run"] else ""))
-        for problem in plan["problems"]:
-            st.warning(problem)
-    if st.button("발송", type="primary", disabled=not (plan and plan["ok"])):
-        try:
-            r = repo.sms_send(grades, body)
-            st.toast(f"{r['count']}명 발송 처리했습니다." + (" (DRY RUN)" if r["dry_run"] else ""), icon="✅")
-        except repo_mod.api.ApiError as e:
-            problems = e.detail.get("problems", []) if isinstance(e.detail, dict) else [str(e.detail)]
-            st.error("발송하지 못했습니다: " + " / ".join(problems))
-        else:
-            st.rerun()
+    sec_title("문자 작성")
+    left, right = st.columns([3, 2], gap="large")
+    with left:
+        st.html('<div class="tpl-label">빠른 문구</div>')
+        tcols = st.columns(len(SMS_TEMPLATES))
+        for col, name in zip(tcols, SMS_TEMPLATES):
+            col.button(name, key=f"tpl_{name}", width="stretch", on_click=use_sms_template, args=(name,))
+        ss.setdefault("sms_grades", ["휴면"])
+        ss.setdefault("sms_body", "오랜만이에요! 이번 주 방문하시면 안주 10% 할인해 드려요.")
+        by_grade = pool["등급"].value_counts()
+        grades = st.multiselect("대상 등급", GRADES, key="sms_grades",
+                                format_func=lambda g: f"{g} ({int(by_grade.get(g, 0))}명)")
+        body = st.text_area("본문", key="sms_body", height=130, help="앞에 (광고) 표기와 뒤에 수신거부 안내가 자동으로 붙어요")
+        plan = None
+        if grades:
+            try:
+                plan = repo.sms_preview(grades, body)
+            except repo_mod.api.ApiError as e:
+                st.error(f"미리보기에 실패했습니다: {e.detail}")
+        if plan:
+            st.caption(f"{plan['bytes']}바이트 → **{plan['type']}** · 발송 대상 {plan['targets']}명 · 잔여 {plan['remaining']}건"
+                       + (" · 🧪 DRY RUN (실제 전송 없음)" if plan["dry_run"] else ""))
+            for problem in plan["problems"]:
+                st.warning(problem)
+        if st.button("발송", type="primary", disabled=not (plan and plan["ok"]), width="stretch"):
+            try:
+                r = repo.sms_send(grades, body)
+                st.toast(f"{r['count']}명 발송 처리했습니다." + (" (DRY RUN)" if r["dry_run"] else ""), icon="✅")
+            except repo_mod.api.ApiError as e:
+                problems = e.detail.get("problems", []) if isinstance(e.detail, dict) else [str(e.detail)]
+                st.error("발송하지 못했습니다: " + " / ".join(problems))
+            else:
+                st.rerun()
+    with right:
+        st.html(phone_preview(plan, not body.strip()))
 
     with st.expander("수신거부 처리"):
-        members = repo.members(ss["grade_rule"])
-        pool = members[members["마케팅 수신 동의"] & ~members["수신거부"]]
         if not pool.empty:
             who = st.selectbox("회원", pool["customer_id"],
                                format_func=lambda i: f"#{i} {pool.set_index('customer_id').at[i, '닉네임']}")
@@ -351,11 +559,8 @@ def page_marketing(repo):
             st.caption("수신 동의한 회원이 없습니다.")
         st.caption(f"수신거부 회원 {int(members['수신거부'].sum())}명 — 발송 대상에서 제외됩니다. (회원 본인은 태블릿에서도 거부할 수 있어요)")
 
-    logs = repo.sms_logs()
-    if logs:
-        sec_title("발송 내역")
-        st.dataframe(pd.DataFrame(logs)[["ts", "type", "status", "target_count", "request_id", "error", "content"]],
-                     hide_index=True, width="stretch")
+    sec_title("발송 내역", f"{len(repo.sms_logs())}건")
+    st.html(sms_history(repo.sms_logs()))
 
 
 if not ss["owner"]:

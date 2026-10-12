@@ -14,16 +14,22 @@ html, body, .stApp, button, input, textarea, select, [data-testid="stMarkdownCon
   font-family: "Pretendard Variable", Pretendard, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif !important;
 }
 .stApp { background: var(--bg); color: var(--ink); letter-spacing: -.01em; }
-[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"], [data-testid="stStatusWidget"],
-footer, #MainMenu, [data-testid="stSidebarHeader"], [data-testid="stSidebarCollapseButton"],
-[data-testid="stExpandSidebarButton"], [data-testid="collapsedControl"] { display: none !important; }
-.block-container { max-width: 1280px !important; padding: 36px 40px 64px !important; }
+[data-testid="stToolbarActions"], [data-testid="stMainMenu"], [data-testid="stDecoration"], [data-testid="stStatusWidget"], footer, #MainMenu { display: none !important; }
+/* 헤더는 투명하게 두고, 사이드바 접기/펼치기 버튼만 남긴다 */
+[data-testid="stHeader"] { background: transparent; pointer-events: none; }
+[data-testid="stHeader"] button { pointer-events: auto; }
+[data-testid="stSidebarHeader"] { position: absolute; top: 10px; right: 8px; padding: 0; z-index: 5; }
+[data-testid="stSidebarCollapseButton"] [data-testid="stIconMaterial"] { color: #cfc8c0 !important; }
+[data-testid="stExpandSidebarButton"] [data-testid="stIconMaterial"] { color: #fff !important; }
+[data-testid="stExpandSidebarButton"] { width: 36px; height: 36px; background: var(--nav); border-radius: 10px; }
+.block-container { max-width: 1280px !important; padding: 60px 40px 64px !important; }
 h1, h2, h3 { letter-spacing: -.02em; color: var(--ink); }
 [data-testid="stCaptionContainer"] { color: var(--ink-3); }
 hr { border-color: var(--line) !important; }
 
 /* ---------- 사이드바 ---------- */
-[data-testid="stSidebar"] { background: var(--nav); border-right: 0; min-width: 260px !important; width: 260px !important; }
+[data-testid="stSidebar"] { background: var(--nav); border-right: 0; }
+[data-testid="stSidebar"][aria-expanded="true"] { min-width: 260px; width: 260px; }
 [data-testid="stSidebar"] [data-testid="stSidebarContent"] { padding: 0; }
 [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] { padding: 28px 16px 20px !important; }
 [data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 6px; }

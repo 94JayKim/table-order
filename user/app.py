@@ -9,11 +9,9 @@ from pathlib import Path
 from html import escape
 
 import streamlit as st
-from PIL import Image
+import server
 
-import login_demo
-
-from menu_data import (CATEGORIES, CATEGORY_BY_ID, MENU, MENU_BY_ID, PROMOS,
+from menu_data import (CATEGORIES, CATEGORY_BY_ID, MENU, MENU_BY_ID,
                        ROULETTE_PRIZES, STAFF_CALLS, STORE)
 from recommendations import DISCOUNT_PERCENT, combo_cart_line, recommend_combos
 
@@ -28,12 +26,22 @@ def init_state():
     ss.setdefault("cart", {})        # key -> {id, name, opt, unit, qty}
     ss.setdefault("orders", [])      # 주문 내역
     ss.setdefault("calls", [])
-    ss.setdefault("table", 12)
     ss.setdefault("roulette", None)  # {"idx", "angle", "animate"} - 세션당 1회
     ss.setdefault("roulette_percent", 0)  # 다음 주문에 적용할 룰렛 할인율
-    ss.setdefault("member", None)    # QR 로그인한 회원 (더미)
+    ss.setdefault("member", None)    # QR 로그인한 회원 {id, nickname}
+    ss.setdefault("access_token", None)
     ss.setdefault("bonus_spin_used", False)
-    ss.setdefault("login", login_demo.new_session(time.time()))
+    ss.setdefault("login", None)     # 발급된 QR 로그인 세션 {token, secret, qr_url, expires_in, created}
+    ss.table = table_from_url()
+
+
+def table_from_url():
+    """태블릿마다 다른 QR/주소로 열도록 ?table=번호 를 받는다. 없거나 잘못되면 12번."""
+    try:
+        n = int(st.query_params.get("table", 12))
+    except (TypeError, ValueError):
+        n = 12
+    return min(max(n, 1), STORE["tables"])
 
 
 def cart_add(item, opt_label, unit, qty):
@@ -198,24 +206,11 @@ CONFETTI = [(18, 18, 38, 12, "#f1566f", -35), (3, 40, 14, 14, "#5b8def", 20), (8
             (90, 40, 16, 16, "#9b6bd6", 10), (5, 70, 30, 10, "#2f8de0", 35), (96, 66, 24, 9, "#ffc933", 20)]
 
 
-@st.cache_resource
-def qr_png(seed: int = 7):
-    """데모용 가짜 QR 이미지 (실제 스캔 불가). 로그인 토큰마다 모양이 달라진다."""
-    rnd, n, scale = random.Random(seed), 25, 8
-    img = Image.new("RGB", (n * scale, n * scale), "white")
-    px = img.load()
-    for r in range(n):
-        for c in range(n):
-            fr, fc = (r % 18 if r >= 18 else r), (c % 18 if c >= 18 else c)
-            if (r < 7 or r >= 18) and (c < 7 or c >= 18) and not (r >= 18 and c >= 18):
-                on = fr in (0, 6) or fc in (0, 6) or (2 <= fr <= 4 and 2 <= fc <= 4)
-            else:
-                on = rnd.random() < .5
-            if on:
-                for y in range(r * scale, (r + 1) * scale):
-                    for x in range(c * scale, (c + 1) * scale):
-                        px[x, y] = (17, 17, 17)
-    return img
+@st.cache_resource(show_spinner=False)
+def qr_image(url: str):
+    """서버가 준 로그인 주소를 QR 이미지로 만든다 (휴대폰 카메라로 스캔 가능)."""
+    import qrcode
+    return qrcode.make(url, box_size=4, border=2).convert("RGB")
 
 
 def render_roulette():
@@ -257,72 +252,88 @@ def render_roulette():
 
 
 # ============================== 화면 ==============================
-def finish_login():
-    """로그인 세션이 승인되면 회원 정보를 반영하고, 룰렛을 한 번 더 돌릴 수 있게 한다."""
-    ss = st.session_state
-    if ss.member or login_demo.state(ss.login, time.time()) != "logged_in":
-        return False
-    ss.member = ss.login["member"]
-    if ss.roulette and not ss.bonus_spin_used:
-        ss.roulette = None
-        ss.bonus_spin_used = True
-    return True
+def new_login():
+    """서버에서 일회용 QR 로그인 세션을 발급받는다. 서버가 없으면 None."""
+    qr = server.create_qr(st.session_state.table)
+    st.session_state.login = {**qr, "created": time.time()} if qr else None
 
 
-def login_action(action):
+def finish_login(event):
     ss = st.session_state
-    now = time.time()
-    if action == "scan":
-        login_demo.scan(ss.login, now)
-    elif action == "approve":
-        login_demo.approve(ss.login, now, {"nickname": ss.get("demo_nick") or "카카오", "kakao_id": "demo"})
-    elif action == "expire":
-        ss.login["created"] -= login_demo.TTL_SECONDS + 1
-    elif action == "refresh":
-        ss.login = login_demo.new_session(now)
+    ss.member, ss.access_token, ss.login = event["member"], event["access_token"], None
+    if ss.roulette and not ss.bonus_spin_used:  # 가입하면 룰렛 한 번 더
+        ss.roulette, ss.bonus_spin_used = None, True
 
 
 @st.fragment(run_every=2)
-def login_demo_panel():
-    """서버가 보내는 로그인 상태를 주기적으로 확인하는 부분 (정식 구현은 WebSocket)."""
+def login_watch():
+    """태블릿 쪽에서 로그인 진행 상황을 2초마다 확인한다 (서버는 WebSocket 도 지원)."""
     ss = st.session_state
-    if finish_login():
+    login = ss.login
+    if not login:
+        return
+    event = server.poll_login(login["secret"])
+    if event and event.get("event") == "logged_in":
+        finish_login(event)
         st.rerun()
-    now = time.time()
-    status = login_demo.state(ss.login, now)
-    label = {"waiting": "휴대폰 스캔 대기 중", "scanned": "카카오 로그인 대기 중",
-             "expired": "QR이 만료되었어요", "logged_in": "로그인 완료"}[status]
-    st.caption(f"상태: **{label}** · 남은 시간 {login_demo.remaining(ss.login, now)}초 · 토큰 `{ss.login['token']}`")
-    st.text_input("카카오 닉네임 (데모)", "카카오", key="demo_nick")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.button("① 휴대폰 QR 스캔", key="login_scan", width="stretch", disabled=status != "waiting",
-              on_click=login_action, args=("scan",))
-    c2.button("② 카카오 로그인", key="login_approve", width="stretch", disabled=status != "scanned",
-              on_click=login_action, args=("approve",))
-    c3.button("만료시키기", key="login_expire", width="stretch", on_click=login_action, args=("expire",))
-    c4.button("QR 새로고침", key="login_refresh", width="stretch", type="primary" if status == "expired" else "secondary",
-              on_click=login_action, args=("refresh",))
+    status = (event or {}).get("status", "waiting")
+    if time.time() - login["created"] > login["expires_in"]:
+        status = "expired"
+    if status == "expired":
+        st.caption("QR이 만료되었어요.")
+        st.button("QR 새로고침", key="login_refresh", on_click=new_login)
+    elif status == "scanned":
+        st.caption("휴대폰에서 카카오 로그인을 마쳐 주세요…")
+    else:
+        st.caption("휴대폰 카메라로 QR을 스캔해 주세요. (3분 안에)")
+
+
+def render_profile_form():
+    """카카오로 받지 못하는 정보(휴대폰 번호 등)와 마케팅 수신 동의를 직접 입력받는다. 모두 선택."""
+    ss = st.session_state
+    with st.expander("📱 회원 정보 입력 (선택)", expanded=not ss.get("profile_saved")):
+        with st.form("profile_form"):
+            phone = st.text_input("휴대폰 번호", placeholder="010-1234-5678")
+            c1, c2 = st.columns(2)
+            year = c1.number_input("출생연도", 1920, 2020, value=None, step=1)
+            gender = c2.selectbox("성별", ["선택 안 함", "남", "여"])
+            consent = st.checkbox("(선택) 쿠폰·이벤트 등 광고성 문자 수신에 동의합니다.")
+            st.caption("※ 임시 문구입니다. 정식 서비스 전에 개인정보 처리방침과 동의 문구를 확정해야 해요. "
+                       "광고 문자는 21시~08시에는 보내지 않고, 문자 하단 안내로 언제든 수신을 거부할 수 있어요.")
+            if st.form_submit_button("저장", type="primary"):
+                ok, msg = server.update_profile(
+                    ss.access_token, phone=phone.strip() or None, birth_year=int(year) if year else None,
+                    gender={"남": "male", "여": "female"}.get(gender), marketing_consent=consent)
+                ss.profile_saved = ok
+                (st.success if ok else st.error)(msg)
+        if st.button("문자 수신거부", key="opt_out_btn"):
+            st.toast("수신거부 처리했어요." if server.opt_out(ss.access_token) else "처리하지 못했어요.", icon="🔕")
 
 
 def render_splash():
     render_roulette()
-    member = st.session_state.member
+    ss = st.session_state
+    member = ss.member
+    if not member and not ss.login and server.is_online():
+        new_login()
     with st.container(horizontal=True, key="splash_bottom"):
-        with st.container(horizontal=True, key="qr_card"):
-            if member:
+        if member:
+            with st.container(horizontal=True, key="qr_card"):
                 st.html(f'<div class="qr-text"><div class="a">{escape(member["nickname"])}님</div>'
                         '<div class="b">로그인 완료!</div><div class="c">룰렛 한 번 더 돌릴 수 있어요.</div></div>')
-            else:
-                token = st.session_state.login["token"]
-                st.image(qr_png(int(token, 16) % 2**31), width=96)
+        elif ss.login:
+            with st.container(horizontal=True, key="qr_card"):
+                st.image(qr_image(ss.login["qr_url"]), width=96)
                 st.html('<div class="qr-text"><div class="a">회원가입하고</div><div class="b">룰렛 한번 더!</div>'
                         '<div class="c">QR코드를 스캔하여<br>간단하게 가입하고<br>추가 기회를 받아보세요!</div></div>')
         with st.container(key="start_cta"):
             st.button("🍴 메뉴선택  ›", type="primary", width="stretch", key="start_btn", on_click=go, args=("menu",))
-    if not member:
-        with st.expander("🧪 데모: 휴대폰 로그인 시뮬레이션 (정식 구현 시 제거)"):
-            st.caption(f"QR 주소 예시: https://example.com/m/login?t={st.session_state.login['token']} — 실제 QR이 아닙니다.")
-            login_demo_panel()
+    if member:
+        render_profile_form()
+    elif ss.login:
+        login_watch()
+    else:
+        st.caption("서버에 연결할 수 없어 QR 로그인을 사용할 수 없어요. (주문은 그대로 가능해요)")
 
 
 def render_header():

@@ -3,14 +3,16 @@
 1차 Prototype 설계 회의록 기준. 모든 데이터는 더미이며 서버와 연결되지 않는다.
 """
 
-import os
+import sys
+from pathlib import Path
 
 from datetime import datetime
 
 import pandas as pd
 import streamlit as st
 
-import sens_demo
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from shared import api  # noqa: E402
 
 from dummy_data import (AGE_GROUPS, GRADES, SPICY_LABELS, TODAY, make_customers,
                         make_orders, menu_frame)
@@ -18,7 +20,6 @@ from menu_data import CATEGORIES, STORE
 
 st.set_page_config(page_title="식당도우미 관리자", page_icon="🛠️", layout="wide")
 
-OWNER_PASSWORD = os.getenv("ADMIN_PASSWORD", "owner")  # 데모용. 실제 인증은 서버에서.
 PAGES = ["대시보드", "메뉴 관리", "추천 가중치", "고객 등급", "주문 이력", "마케팅"]
 CAT_NAMES = [c[2] for c in CATEGORIES if c[0] != "ai"]
 
@@ -27,9 +28,7 @@ ss.setdefault("owner", False)
 ss.setdefault("menu", menu_frame())
 ss.setdefault("customers", make_customers())
 ss.setdefault("grade_rule", {"repeat": 2, "regular": 5, "dormant": 60})
-ss.setdefault("campaigns", [])
-ss.setdefault("sms_used", {"SMS": 0, "LMS": 0})
-ss.setdefault("opted_out", set())
+ss.setdefault("token", "")  # 서버 관리자 토큰 (ADMIN_TOKEN)
 ss.setdefault("orders", make_orders(ss["customers"]))
 
 
@@ -53,13 +52,18 @@ def customers_graded() -> pd.DataFrame:
 def login():
     st.title("🛠️ 식당도우미 관리자")
     st.caption("OWNER(사장님)만 접근할 수 있습니다. MANAGER·STAFF 권한은 1차 Prototype에서 사용하지 않습니다.")
-    pw = st.text_input("OWNER 비밀번호", type="password")
+    token = st.text_input("관리자 토큰", type="password")
     if st.button("로그인", type="primary"):
-        if pw == OWNER_PASSWORD:
-            ss["owner"] = True
+        try:
+            api.get("/admin/api/marketing/sms/usage", token)
+        except api.ApiUnavailable:
+            st.error("서버에 연결할 수 없습니다. 백엔드가 실행 중인지 확인해 주세요.")
+        except api.ApiError:
+            st.error("토큰이 올바르지 않습니다.")
+        else:
+            ss["owner"], ss["token"] = True, token
             st.rerun()
-        st.error("비밀번호가 올바르지 않습니다.")
-    st.info("데모 비밀번호는 `owner` 입니다. (환경변수 ADMIN_PASSWORD로 변경)")
+    st.info("백엔드 `.env`의 `ADMIN_TOKEN` 값을 입력하세요. (기본값 `change-me`)")
 
 
 def page_dashboard():
@@ -173,42 +177,63 @@ def page_orders():
 
 
 def page_marketing():
-    st.subheader("마케팅 지원 (문자 발송 데모)")
-    st.caption("SENS 연동 전 더미입니다. 실제 문자는 전송되지 않습니다. 수신 동의 고객에게만, 야간 제외, 월 무료 한도 안에서 발송합니다.")
-    cust = customers_graded()
-    cust = cust[~cust["customer_id"].isin(ss["opted_out"])]
-    used = ss["sms_used"]
+    st.subheader("마케팅 지원 · 문자 발송")
+    tk = ss["token"]
+    try:
+        usage = api.get("/admin/api/marketing/sms/usage", tk)
+    except (api.ApiError, api.ApiUnavailable) as e:
+        st.error(f"서버에서 정보를 가져오지 못했습니다: {e}")
+        return
+    st.caption("수신 동의·휴대폰 번호가 있는 회원에게만, 야간(21~08시) 제외, 월 무료 한도 안에서 발송합니다. "
+               "서버 설정 `SMS_DRY_RUN=true` 이면 실제 문자는 전송되지 않고 기록만 남습니다.")
     c1, c2 = st.columns(2)
-    c1.metric("이번 달 SMS", f"{used['SMS']} / {sens_demo.FREE_SMS}건")
-    c2.metric("이번 달 LMS", f"{used['LMS']} / {sens_demo.FREE_LMS}건")
+    c1.metric("이번 달 SMS", f"{usage['used']['SMS']} / {usage['limit']['SMS']}건")
+    c2.metric("이번 달 LMS", f"{usage['used']['LMS']} / {usage['limit']['LMS']}건")
 
     grades = st.multiselect("대상 등급", GRADES, default=["휴면"])
     body = st.text_area("본문", "오랜만이에요! 이번 주 방문하시면 안주 10% 할인해 드려요.")
-    now = st.time_input("현재 시각 (데모: 야간 차단 확인용)", datetime.now().time().replace(second=0, microsecond=0))
-    text = sens_demo.build_message(body, STORE["name"])
-    targets = cust[cust["등급"].isin(grades) & cust["마케팅 수신 동의"]]
-    result = sens_demo.plan(len(targets), text, now, used)
-
-    st.text_area("실제 발송 문구 (광고 표기·수신거부 안내 자동 추가)", text, disabled=True, height=110)
-    st.caption(f"{result['bytes']}바이트 → **{result['type']}** · 수신 동의 대상 {len(targets)}명 · 잔여 {result['left']}건")
-    for problem in result["problems"]:
-        st.warning(problem)
-    if st.button("발송 (데모)", type="primary", disabled=not result["ok"] or not body.strip()):
-        used[result["type"]] += len(targets)
-        ss["campaigns"].insert(0, {"시각": now.strftime("%H:%M"), "유형": result["type"],
-                                   "대상 등급": ", ".join(grades), "발송 수": len(targets), "본문": text})
-        st.toast(f"{len(targets)}명에게 발송 처리했습니다. (실제 전송 없음)", icon="✅")
-        st.rerun()
-
-    with st.expander("수신거부 처리 (데모)"):
-        who = st.selectbox("고객", cust["customer_id"], format_func=lambda i: f"{i} · {cust.set_index('customer_id').at[i, '닉네임']}")
-        if st.button("수신거부로 등록"):
-            ss["opted_out"].add(who)
+    plan = None
+    if grades:
+        try:
+            plan = api.post("/admin/api/marketing/sms/preview", tk, json={"grades": grades, "body": body})
+        except api.ApiError as e:
+            st.error(f"미리보기에 실패했습니다: {e.detail}")
+    if plan:
+        st.text_area("실제 발송 문구 (광고 표기·수신거부 안내 자동 추가)", plan["content"], disabled=True, height=110)
+        st.caption(f"{plan['bytes']}바이트 → **{plan['type']}** · 발송 대상 {plan['targets']}명 · 잔여 {plan['remaining']}건"
+                   + (" · 🧪 DRY RUN (실제 전송 없음)" if plan["dry_run"] else ""))
+        for problem in plan["problems"]:
+            st.warning(problem)
+    if st.button("발송", type="primary", disabled=not (plan and plan["ok"])):
+        try:
+            r = api.post("/admin/api/marketing/sms/send", tk, json={"grades": grades, "body": body})
+            st.toast(f"{r['count']}명 발송 처리했습니다." + (" (DRY RUN)" if r["dry_run"] else ""), icon="✅")
+        except api.ApiError as e:
+            problems = e.detail.get("problems", []) if isinstance(e.detail, dict) else [str(e.detail)]
+            st.error("발송하지 못했습니다: " + " / ".join(problems))
+        else:
             st.rerun()
-        st.caption(f"수신거부 {len(ss['opted_out'])}명 — 이후 발송 대상에서 제외됩니다.")
-    if ss["campaigns"]:
+
+    with st.expander("수신거부 처리"):
+        try:
+            members = api.get("/admin/api/members", tk)["members"]
+        except (api.ApiError, api.ApiUnavailable):
+            members = []
+        pool = [m for m in members if m["marketing_consent"] and not m["opted_out"]]
+        if pool:
+            who = st.selectbox("회원", pool, format_func=lambda m: f"#{m['id']} {m['nickname']} · {m['grade']}")
+            if st.button("수신거부로 등록"):
+                api.post(f"/admin/api/members/{who['id']}/opt-out", tk)
+                st.rerun()
+        else:
+            st.caption("수신 동의한 회원이 없습니다.")
+        st.caption(f"수신거부 회원 {sum(m['opted_out'] for m in members)}명 — 발송 대상에서 제외됩니다. (회원 본인은 태블릿에서도 거부할 수 있어요)")
+
+    logs = api.get("/admin/api/marketing/sms/logs", tk)
+    if logs:
         st.write("발송 내역")
-        st.dataframe(pd.DataFrame(ss["campaigns"]), hide_index=True, width="stretch")
+        st.dataframe(pd.DataFrame(logs)[["ts", "type", "status", "target_count", "request_id", "error", "content"]],
+                     hide_index=True, width="stretch")
 
 
 if not ss["owner"]:

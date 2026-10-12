@@ -87,34 +87,32 @@
 범례: ✅ 완료 · ⏳ 남음(Claude가 구현) · 🙋 당신이 해야 함
 
 ### 3-1. QR 로그인
-- ✅ 더미 흐름과 규칙 검증 (`user/login_demo.py`, 브라우저 확인)
-- ✅ 로그인 세션 저장소 (일회용, 3분 만료, token/secret 분리)
-- ✅ `/api/auth/*` REST, `WS /api/auth/ws/{secret}`, 폴링 대체 경로
-- ✅ 카카오 클라이언트 (키 없으면 모의 모드, 키 있으면 실제 호출 코드)
-- ✅ 회원 저장소(SQLite), JWT 발급, `/api/members/me` (휴대폰·수신동의 직접 입력)
-- ✅ 백엔드 테스트 10개, 실제 uvicorn + WebSocket 확인
-- ⏳ **[user] 서버 연동**: `login_demo.py` 대신 `POST /api/auth/qr` 호출, 로그인 상태는 폴링/WS로 수신
-- ⏳ **[user] 실제 QR 이미지**: 가짜 `qr_png()`를 `qrcode`로 교체하고 `qrcode`를 `requirements.txt`에 추가
-- ⏳ **[user] 로그인 후 화면**: 휴대폰 번호·마케팅 동의 입력 폼(`PATCH /api/members/me`), 테이블 번호는 `st.query_params`에서 받기
-- ⏳ [user] 시뮬레이션 패널과 `login_demo.py` 제거 (연동 확인 뒤)
-- ⏳ [백엔드] 로그인 세션 Redis 교체 인터페이스 (여러 프로세스로 운영할 때만 필요)
-- ⏳ [백엔드] 로그아웃/JWT 만료 정책 정의, 운영용 `JWT_SECRET` 미설정 시 기동 차단
+- ✅ 로그인 세션 저장소 (일회용, 3분 만료, token/secret 분리), `/api/auth/*` REST + `WS /api/auth/ws/{secret}` + 폴링
+- ✅ 카카오 클라이언트 (키 없으면 모의 모드, 키 있으면 실제 호출 코드), 회원 저장소(SQLite), JWT, `/api/members/me`
+- ✅ **[user] 서버 연동**: 실제 QR 이미지(`qrcode`), 2초 폴링으로 로그인 감지, 만료 시 QR 새로고침, `?table=번호`로 테이블 지정
+- ✅ **[user] 로그인 후 화면**: 닉네임 표시, 룰렛 한 번 더, 휴대폰 번호·출생연도·성별·마케팅 수신 동의 입력, 문자 수신거부 버튼
+- ✅ 더미 시뮬레이션(`login_demo.py`) 제거. 서버가 없으면 QR 로그인만 꺼지고 주문 화면은 그대로 동작
+- ✅ 테스트: 백엔드 `backend/tests/test_auth.py`, 통합 `tests/test_qr_login_e2e.py`, 실제 서버 두 개 + 브라우저에서 화면의 QR을 디코딩해 스캔을 흉내 내는 확인까지 완료
+- ✅ 운영 모드(`APP_ENV=prod`)에서 기본 비밀값(`change-me`)이면 서버 기동 차단
+- ⏳ [백엔드] 로그인 세션 Redis 교체 (여러 프로세스로 운영할 때만 필요)
+- ⏳ [백엔드] 로그아웃/JWT 만료 정책 정의
+- ⏳ 휴대폰 번호를 직접 입력 대신 카카오 수집으로 바꾸려면 비즈 앱 심사 후 `kakao.py` 수정
 
 ### 3-2. 문자 발송 (SENS)
-- ✅ 더미 규칙 검증 (SMS/LMS, 광고 문구, 월 한도, 야간 차단, 수신 동의·거부) — `admin/sens_demo.py`
-- ✅ 설정 틀 (`.env.example`, `settings.py`)
-- ⏳ [백엔드] 발송 로그 테이블 `sms_logs`와 월 사용량 집계
-- ⏳ [백엔드] SENS 서비스: HMAC 서명, SMS/LMS 분기, `SMS_DRY_RUN=true` 기본
-- ⏳ [백엔드] `/admin/api/marketing/sms/{preview,send,usage,logs}` + `/api/members/me/opt-out` + 테스트
-- ⏳ [admin] 마케팅 화면을 API 연동으로 교체, 남은 무료 건수 표시
-- ⏳ [admin] 고객 등급·주문 이력 화면을 `members` 조회 API로 교체 (`dummy_data.py` 고객 제거)
+- ✅ 발송 규칙: SMS/LMS 분기, `(광고)` 표기·수신거부 문구 자동 추가, 월 한도, 야간 차단, 수신 동의·번호·수신거부 필터 (`backend/app/services/sens.py`)
+- ✅ SENS 호출: v2 서명(HMAC-SHA256), `contentType=AD`, 100명 단위 분할, 실패 시 `failed` 로그. `SMS_DRY_RUN=true`(기본)이면 호출 없이 기록만
+- ✅ 발송 로그 `sms_logs`와 월 사용량 집계 (실패는 한도에서 제외)
+- ✅ API: `/admin/api/marketing/sms/{preview,send,usage,logs}`, `/admin/api/members/{id}/opt-out`, `/api/members/me/opt-out`
+- ✅ **[admin] 마케팅 화면 API 연동** (관리자 토큰 로그인, 사용량·미리보기·발송·수신거부·내역). 더미 `sens_demo.py` 제거
+- ✅ 테스트: `backend/tests/test_sms.py`(SENS 호출은 MockTransport), 통합 `tests/test_sms_admin_e2e.py`
+- ⏳ SENS 1회 호출당 수신자 수 상한(현재 100)을 콘솔 문서로 확인
 
 ### 3-3. 앞서 분석에서 나온 user 페이지 수정 사항 (아직 미수정)
 - ⏳ 맵기 필터 오류: "맵지 않게"인데 "매콤한 골뱅이 한 상"이 추천됨 (`recommendations.py`)
 - ⏳ `requirements.txt`의 streamlit 최소 버전을 1.65로 상향
 - ⏳ `.streamlit/config.toml`을 저장소 루트에서 실행해도 적용되게 이동 (user·admin 공통)
 - ⏳ 주문 시각 시간대를 한국(Asia/Seoul)으로
-- ⏳ 지점명 "강남역점"을 회의록의 "홍대"로 정정할지 확인 후 반영
+- ✅ 지점명 홍대점 반영 (`user/menu_data.py`, 백엔드 `STORE_BRANCH`)
 - ⏳ 메뉴·주문·직원 호출을 백엔드 API와 연결 (`shared/api.py` 사용), 관리자와 데이터 공유
 - ⏳ 추천에 사장님 가중치·날씨·시간대 반영, 추천 노출/적중 기록
 - ⏳ HTML 이스케이프 일관화, 사용하지 않는 `PROMOS` 정리
@@ -122,7 +120,7 @@
 ## 4. 당신이 해야 할 일 🙋
 
 ### 지금 정하면 되는 것
-- [ ] 지점명: 회의록은 **홍대**, 현재 코드는 **강남역점** — 어느 쪽이 맞는지
+- [x] 지점명: **홍대점**으로 확정, 반영 완료
 - [ ] 휴대폰 번호: 카카오 비즈 앱 심사로 받을지, 직접 입력으로 갈지 (현재 코드는 직접 입력 기준)
 
 ### 카카오 (로그인 실기기 검증 전까지)
@@ -152,9 +150,7 @@
 - [ ] 수신거부 후 재발송 시 제외
 - [ ] 월 한도 도달 시 차단
 
-## 6. 권장 다음 순서
-1. ⏳ [user] 서버 연동 + 실제 QR (모의 모드로 휴대폰 실기기 확인까지 가능, 키 불필요)
-2. ⏳ [백엔드] SENS 서비스 + 마케팅 API (`SMS_DRY_RUN`으로 키 없이 완결)
-3. ⏳ [admin] API 연동
-4. 🙋 카카오·SENS 키 준비 → 실제 모드 전환 후 5장 체크리스트 수행
-5. ⏳ 3-3의 user 페이지 수정 사항 (맵기 필터 등 단독 수정 가능한 것부터)
+## 6. 다음 순서
+1. 🙋 같은 와이파이 휴대폰으로 **모의 모드** 실기기 확인 (`PUBLIC_BASE_URL=http://서버PC주소:8000`, README 참고)
+2. 🙋 카카오·SENS 키 준비 → `.env`에 입력 → 실제 모드 전환 후 5장 체크리스트 수행 (SENS는 `SMS_DRY_RUN=false` 로 바꾸기 전에 본인 번호 1건부터)
+3. ⏳ 3-3의 user 페이지 수정 사항 (요청 시)

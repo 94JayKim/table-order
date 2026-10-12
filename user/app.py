@@ -11,6 +11,7 @@ from datetime import timedelta, timezone
 
 import streamlit as st
 import server
+from ai_quiz_data import (QUESTIONS, WEATHER, answer_label, current_weather, time_slot)
 
 from menu_data import (CATEGORIES, CATEGORY_BY_ID, MENU, MENU_BY_ID,
                        ROULETTE_PRIZES, STAFF_CALLS, STORE)
@@ -33,6 +34,7 @@ def init_state():
     ss.setdefault("roulette_percent", 0)  # 다음 주문에 적용할 룰렛 할인율
     ss.setdefault("member", None)    # QR 로그인한 회원 {id, nickname}
     ss.setdefault("access_token", None)
+    ss.setdefault("quiz", {"step": 0, "answers": {}})  # AI 질문 진행 상태
     ss.setdefault("members", [])      # 이 태블릿에서 로그인한 회원 기록 (누적): {id, nickname, at, eligible, prize}
     ss.setdefault("granted_ids", [])  # 룰렛 기회를 이미 받은 회원 id (회원당 1회)
     ss.setdefault("login", None)     # 발급된 QR 로그인 세션 {token, secret, qr_url, expires_in, created}
@@ -450,6 +452,8 @@ def render_header():
 
 
 def render_categories():
+    st.button("💬 AI 질문", key="open_quiz", width="stretch", type="primary", on_click=open_quiz,
+              help="몇 가지 질문에 답하면 메뉴 조합을 추천해 드려요")
     for cid, icon, name, _ in CATEGORIES:
         if st.button(f"{icon}  {name}", key=f"cat_{cid}", width="stretch",
                      type="primary" if st.session_state.cat == cid else "secondary"):
@@ -477,6 +481,28 @@ def render_menu():
                     st.rerun()
 
 
+def render_combo_cards(combos):
+    """추천 조합 카드와 '담기' 버튼 (AI 추천 조합 화면과 AI 질문 결과가 함께 쓴다)."""
+    for rank, combo in enumerate(combos, 1):
+        with st.container(key=f"ai_combo_{rank}"):
+            contents = "".join(
+                f'<div class="combo-item"><span class="combo-emoji">{c["emoji"]}</span>'
+                f'<span>{escape(c["name"])}<small>{escape(c["opt"])}</small></span><b>× {c["qty"]}</b></div>'
+                for c in combo["components"])
+            st.html(f'<div class="combo-heading"><span class="combo-rank rank-{rank}">{rank}위</span>'
+                    f'<h3>{combo["name"]}</h3>{"<span class=\"combo-top\">가장 추천해요</span>" if rank == 1 else ""}</div>'
+                    f'<div class="combo-items">{contents}</div>'
+                    f'<div class="combo-reason"><strong>✨ 이 조합을 추천한 이유</strong><p>{combo["reason"]}</p></div>'
+                    f'<div class="combo-pricing"><span class="combo-discount">{DISCOUNT_PERCENT}% 할인</span>'
+                    f'<del>{won(combo["original"])}</del><strong>{won(combo["price"])}</strong>'
+                    f'<small>{won(combo["discount"])} 절약</small></div>')
+            if st.button(f"{rank}위 조합 담기 · {won(combo['price'])}", key=f"add_combo_{rank}",
+                         type="primary" if rank == 1 else "secondary", width="stretch"):
+                add_combo(combo)
+                st.toast("할인된 가격으로 조합을 담았어요", icon="🛒")
+                st.rerun()
+
+
 def render_recommendations():
     st.html('<div class="ai-hero"><div class="ai-eyebrow">✨ 오늘의 맞춤 메뉴</div>'
             '<h2>AI 추천 조합</h2><p>취향에 맞는 한 상, 조합 할인까지 한 번에.</p>'
@@ -498,25 +524,87 @@ def render_recommendations():
             f'<small>{people}명 · {won(budget)} 이하</small></div>')
     if not combos:
         st.info("선택한 조건에 맞는 조합이 없어요. 예산을 높이거나 음료·인원 조건을 바꿔 주세요.")
-    for rank, combo in enumerate(combos, 1):
-        with st.container(key=f"ai_combo_{rank}"):
-            contents = "".join(
-                f'<div class="combo-item"><span class="combo-emoji">{c["emoji"]}</span>'
-                f'<span>{escape(c["name"])}<small>{escape(c["opt"])}</small></span><b>× {c["qty"]}</b></div>'
-                for c in combo["components"])
-            st.html(f'<div class="combo-heading"><span class="combo-rank rank-{rank}">{rank}위</span>'
-                    f'<h3>{combo["name"]}</h3>{"<span class=\"combo-top\">가장 추천해요</span>" if rank == 1 else ""}</div>'
-                    f'<div class="combo-items">{contents}</div>'
-                    f'<div class="combo-reason"><strong>✨ 이 조합을 추천한 이유</strong><p>{combo["reason"]}</p></div>'
-                    f'<div class="combo-pricing"><span class="combo-discount">{DISCOUNT_PERCENT}% 할인</span>'
-                    f'<del>{won(combo["original"])}</del><strong>{won(combo["price"])}</strong>'
-                    f'<small>{won(combo["discount"])} 절약</small></div>')
-            if st.button(f"{rank}위 조합 담기 · {won(combo['price'])}", key=f"add_combo_{rank}",
-                         type="primary" if rank == 1 else "secondary", width="stretch"):
-                add_combo(combo)
-                st.toast("할인된 가격으로 조합을 담았어요", icon="🛒")
-                st.rerun()
+    render_combo_cards(combos)
     st.caption("현재는 취향과 주문 정보를 반영한 데모 추천입니다. 조합 할인은 세트 단위로 적용됩니다.")
+
+
+# ============================== AI 질문 ==============================
+def open_quiz():
+    st.session_state.quiz = {"step": 0, "answers": {}}
+    go("ai_quiz")
+
+
+def quiz_answer(qid, value):
+    q = st.session_state.quiz
+    q["answers"][qid] = value
+    q["step"] = min(q["step"] + 1, len(QUESTIONS))  # 선택하면 바로 다음 질문으로
+
+
+def quiz_back():
+    q = st.session_state.quiz
+    q["step"] = max(q["step"] - 1, 0)
+
+
+def quiz_goto(step):
+    st.session_state.quiz["step"] = step
+
+
+def quiz_restart():
+    st.session_state.quiz = {"step": 0, "answers": {}}
+
+
+def render_quiz_question(step):
+    q = QUESTIONS[step]
+    answers = st.session_state.quiz["answers"]
+    c_back, c_bar, c_close = st.columns([1.2, 6, 1.2], vertical_alignment="center")
+    c_back.button("←", key="quiz_back", on_click=quiz_back, disabled=step == 0, width="stretch", help="이전 질문")
+    c_bar.html(f'<div class="qz-progress"><span class="n">{step + 1}</span><div class="bar">'
+               f'<i style="width:{(step + 1) / len(QUESTIONS) * 100:.0f}%"></i></div><span class="t">{len(QUESTIONS)}</span></div>')
+    c_close.button("✕", key="quiz_close", on_click=go, args=("menu",), width="stretch", help="닫고 메뉴로 돌아가기")
+    st.html(f'<div class="qz-group">{escape(q["group"])}</div><h2 class="qz-title">{escape(q["title"])}</h2>')
+    with st.container(horizontal=True, key="quiz_grid"):
+        for i, (value, label, emoji) in enumerate(q["options"]):
+            with st.container(key=f"quiz_opt_{i}"):
+                st.html(f'<div class="qz-emoji">{emoji}</div>')
+                st.button(label, key=f"quiz_pick_{q['id']}_{i}", width="stretch", on_click=quiz_answer,
+                          args=(q["id"], value), type="primary" if answers.get(q["id"]) == value else "secondary")
+    st.html('<div class="qz-hint">선택하면 바로 다음 질문으로 넘어가요 · 시간대와 날씨는 자동으로 반영돼요</div>')
+
+
+def render_quiz_result():
+    ss = st.session_state
+    a = ss.quiz["answers"]
+    hour, slot = time_slot()
+    weather = current_weather(st.query_params.get("weather"))
+    w_label, w_icon = WEATHER[weather]
+    lines = list(ss.cart.values()) + [line for order in ss.orders for line in order["lines"]]
+    combos = recommend_combos(a["people"], a["budget"], a["spicy"], "맥주", lines, hour=hour, weather=weather,
+                              hunger=a["hunger"], stress=a["stress"], kind=a["kind"], intent=a["intent"],
+                              gender=a["gender"])
+    chips = "".join(f'<span class="qz-chip">{escape(answer_label(q["id"], a[q["id"]]))}</span>' for q in QUESTIONS)
+    st.html('<div class="ai-hero"><div class="ai-eyebrow">✨ AI 질문 결과</div><h2>맞춤 메뉴 조합이 완성됐어요</h2>'
+            f'<p>답변해 주신 {len(QUESTIONS)}가지와 오늘의 상황을 반영했어요.</p></div>'
+            f'<div class="qz-chips">{chips}</div>'
+            f'<div class="qz-auto">자동 반영 · 🕒 {slot} ({hour}시) · {w_icon} 날씨 {w_label} <small>(날씨는 더미 데이터)</small></div>')
+    if not combos:
+        st.info("선택한 조건에 맞는 조합이 없어요. 예산이나 인원을 바꿔서 다시 골라 보세요.")
+        st.button("💵 예산 다시 고르기", key="quiz_edit_budget", on_click=quiz_goto, args=(len(QUESTIONS) - 1,))
+    else:
+        st.html(f'<div class="section-title ai-results-title">추천 조합 <span>{len(combos)}</span></div>')
+        render_combo_cards(combos)
+    c1, c2 = st.columns(2)
+    c1.button("🔄 처음부터 다시 질문", key="quiz_restart", on_click=quiz_restart, width="stretch")
+    c2.button("🍽️ 메뉴 보러가기", key="quiz_to_menu", on_click=go, args=("menu",), type="primary", width="stretch")
+    st.caption("현재는 더미 데이터와 임시 규칙으로 만든 데모 추천입니다. 조합 할인은 세트 단위로 적용됩니다.")
+
+
+def render_ai_quiz():
+    step = st.session_state.quiz["step"]
+    with st.container(key="quiz_page"):
+        if step < len(QUESTIONS):
+            render_quiz_question(step)
+        else:
+            render_quiz_result()
 
 
 def render_cart(dialog=False):
@@ -553,6 +641,11 @@ def main():
         render_splash()
         return
     render_header()
+    if st.session_state.page == "ai_quiz":
+        render_ai_quiz()
+        if st.session_state.pop("confirm_order", False):
+            confirm_dialog()
+        return
     with st.container(key="order_layout"):
         c_cat, c_menu, c_cart = st.columns([1.15, 5.2, 2.5], gap="medium")
     with c_cat:

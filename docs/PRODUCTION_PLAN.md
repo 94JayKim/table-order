@@ -24,14 +24,19 @@
 태블릿 ◀─WS {"event":"logged_in","member":{...},"access_token":"..."}
 ```
 
-### API 계약
+### API 계약 (✅ 구현됨: `backend/app/routers/auth.py`, 테스트 `backend/tests/test_auth.py`)
 | 메서드 | 경로 | 설명 |
 |---|---|---|
-| POST | `/api/auth/qr` | body `{table_no}` → `{token, qr_url, expires_in}` |
-| GET | `/api/auth/qr/{token}` | 상태 폴링(WS 대체용) → `{status: waiting/scanned/logged_in/expired}` |
-| GET | `/api/auth/kakao/start?token=` | 토큰 검증 후 카카오로 redirect. `state`=토큰 |
-| GET | `/api/auth/kakao/callback` | 카카오 콜백. 완료 후 "태블릿을 확인하세요" HTML 반환 |
-| WS | `/api/auth/ws/{token}` | 이벤트 `scanned` / `logged_in` / `expired` |
+| POST | `/api/auth/qr` | body `{table_no}` → `{token, secret, qr_url, expires_in}` |
+| GET | `/api/auth/qr/{secret}` | WS 대체 폴링 → `{status}`. 로그인 완료 시 결과(JWT)를 **한 번만** 반환 |
+| GET | `/api/auth/kakao/start?token=` | QR 주소. 스캔 처리 후 카카오(키 없으면 모의 화면)로 302. 만료·사용된 QR은 410 |
+| GET | `/api/auth/kakao/callback` | 카카오 콜백. 회원 가입/갱신, JWT 발급, 태블릿에 알림 |
+| WS | `/api/auth/ws/{secret}` | 이벤트 `status` → `scanned` → `logged_in`(member, access_token) 또는 `expired` |
+| GET/PATCH | `/api/members/me` | JWT 필요. 휴대폰 번호(직접 입력)·마케팅 수신 동의 |
+
+- **token / secret 분리**: QR에는 `token`만 들어간다. 로그인 결과는 태블릿만 아는 `secret`으로만 받을 수 있어, QR을 찍은 제3자가 결과를 가로챌 수 없다.
+- **모의 모드**: `KAKAO_REST_API_KEY` 가 비어 있으면 `/api/auth/kakao/mock` 의 간단한 로그인 화면을 쓴다. 키를 넣으면 자동으로 실제 카카오 호출로 바뀌고 모의 화면은 404가 된다.
+- 운영 전 `JWT_SECRET` 을 반드시 바꿀 것 (기본값 `change-me`).
 
 ### 규칙 (더미에서 검증한 것을 그대로 이식)
 - 상태 전이: `waiting → scanned → logged_in`, 또는 `expired`. 되돌리기 없음.
@@ -79,9 +84,9 @@
 
 ## 3. 구현 순서
 
-1. [백엔드] 회원·로그인 세션·발송 로그 스키마 (SQLite) + 마이그레이션
-2. [백엔드] 로그인 세션 저장소 + `/api/auth/*` (카카오는 mock 어댑터로 먼저, 키 입력 시 실제 호출)
-3. [백엔드] WebSocket 알림 + 테스트 (만료·재사용·state 불일치)
+1. ✅ [백엔드] 회원 저장소(SQLite). 발송 로그 스키마는 5단계에서
+2. ✅ [백엔드] 로그인 세션 저장소 + `/api/auth/*` (카카오 mock 어댑터, 키 입력 시 실제 호출)
+3. ✅ [백엔드] WebSocket 알림 + 테스트 (만료·재사용·state 불일치·secret 분리)
 4. [user] 가짜 QR·시뮬레이션 패널 제거 → API 연동, 로그인 상태 연결
 5. [백엔드] SENS 서비스(`SMS_DRY_RUN=true` 기본) + `/admin/api/marketing/*` + 테스트
 6. [admin] 마케팅·고객 화면을 API 연동으로 교체 (더미 `dummy_data` 고객 제거)

@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     kakao_redirect_uri: str = "http://localhost:8000/api/auth/kakao/callback"
     jwt_secret: str = "change-me"
     login_ttl_seconds: int = 180
+    jwt_expire_minutes: int = 720
 
     # 문자 발송 / 네이버 클라우드 SENS (docs/PRODUCTION_PLAN.md 2장)
     sens_service_id: str = ""

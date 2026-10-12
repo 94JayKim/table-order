@@ -86,3 +86,40 @@ def test_prod_refuses_default_secrets():
     with pytest.raises(RuntimeError):
         create_app(settings(app_env="prod", jwt_secret="change-me"))
     create_app(settings(app_env="prod"))  # 비밀값을 바꾸면 기동 가능
+
+
+def test_content_endpoints_match_frontend_dummy_shape(client):
+    """서버 응답이 user/*_data.py 더미와 같은 모양이어야 화면이 변환 없이 쓴다."""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "user"))
+    import ai_quiz_data, menu_data, recommendation_data
+
+    content = client.get("/api/content").json()
+    assert set(content) == {"categories", "roulette_prizes", "staff_calls", "quiz_questions", "weather", "rules"}
+    assert content["categories"] == menu_data.CATEGORIES
+    assert content["roulette_prizes"] == menu_data.ROULETTE_PRIZES and content["staff_calls"] == menu_data.STAFF_CALLS
+    assert content["quiz_questions"] == ai_quiz_data.QUESTIONS and content["weather"] == ai_quiz_data.WEATHER
+    assert content["rules"] == recommendation_data.RULES
+    assert client.get("/api/content/staff_calls").json() == menu_data.STAFF_CALLS
+    assert client.get("/api/content/nope").status_code == 404
+    store = client.get("/api/store").json()
+    assert store == menu_data.STORE  # 매장 정보도 더미와 같은 모양
+    menu = client.get("/api/menus").json()
+    assert {"id", "cat", "name", "desc", "price", "emoji", "tags", "soldout"} <= menu[0].keys()
+
+
+def test_admin_can_edit_content_and_users_see_it(client):
+    prizes = client.get("/api/content/staff_calls").json()
+    r = client.put("/admin/api/content/staff_calls", headers=ADMIN, json=prizes + ["🎁 새 항목"])
+    assert r.status_code == 200
+    assert client.get("/api/content").json()["staff_calls"][-1] == "🎁 새 항목"
+    assert client.put("/admin/api/content/staff_calls", headers=ADMIN, json={"a": 1}).status_code == 422  # 종류가 다름
+    assert client.put("/admin/api/content/staff_calls", headers=ADMIN, json=[]).status_code == 422       # 비어 있음
+    assert client.put("/admin/api/content/nope", headers=ADMIN, json=["x"]).status_code == 404
+    assert client.put("/admin/api/content/staff_calls", json=["x"]).status_code == 401
+
+
+def test_admin_menu_categories_come_from_content(client):
+    cats = client.get("/admin/api/menus", headers=ADMIN).json()["categories"]
+    assert [c["id"] for c in cats] == ["chicken", "anju", "soup", "beer", "soju", "side"]  # ai/best 제외

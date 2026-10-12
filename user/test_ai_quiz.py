@@ -2,7 +2,7 @@ import unittest
 
 from streamlit.testing.v1 import AppTest
 
-from ai_quiz_data import QUESTIONS, QUESTION_BY_ID
+from ai_quiz_data import QUESTIONS
 from menu_data import MENU_BY_ID
 from recommendations import recommend_combos
 
@@ -17,7 +17,7 @@ class QuizDataTests(unittest.TestCase):
                          ["hunger", "stress", "people", "gender", "kind", "spicy", "intent", "budget"])
         for q in QUESTIONS:
             self.assertGreaterEqual(len(q["options"]), 3, q["id"])
-            self.assertEqual(len({v for v, _, _ in q["options"]}), len(q["options"]), q["id"])
+            self.assertEqual(len({o["value"] for o in q["options"]}), len(q["options"]), q["id"])
 
 
 class QuizRecommendationTests(unittest.TestCase):
@@ -105,7 +105,7 @@ class QuizScreenTests(unittest.TestCase):
             self.assertEqual(app.session_state["quiz"]["step"], step + 1)
         app.button(key="quiz_back").click().run()
         self.assertEqual(app.session_state["quiz"]["step"], 2)
-        self.assertEqual(app.session_state["quiz"]["answers"]["people"], QUESTION_BY_ID["people"]["options"][2][0])
+        self.assertEqual(app.session_state["quiz"]["answers"]["people"], next(q for q in QUESTIONS if q["id"] == "people")["options"][2]["value"])
         self.assertFalse(app.exception)
 
     def test_full_flow_shows_result_and_adds_combo_to_cart(self):

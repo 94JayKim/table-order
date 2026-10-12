@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS recommendation_events (
 
 
 def _menu(row: dict) -> dict:
+    row.pop("sort", None)  # 정렬용 내부 값은 밖으로 내보내지 않는다
     row["tags"] = json.loads(row["tags"])
     for k in ("soldout", "set_ok"):
         row[k] = bool(row[k])

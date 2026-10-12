@@ -15,6 +15,7 @@ class Settings(BaseSettings):
 
     store_name: str = "역전할머니맥주"
     store_branch: str = "홍대점"
+    store_slogan: str = "옛날 그 맛 그대로, 시원한 생맥주 한 잔!"
     store_tables: int = 30
 
     # 고객 등급 기준 (임시값, 정책 확정 후 조정)

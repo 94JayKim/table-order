@@ -11,16 +11,31 @@ from datetime import timedelta, timezone
 
 import streamlit as st
 import server
-from ai_quiz_data import (QUESTIONS, WEATHER, answer_label, current_weather, time_slot)
+import user_repository as repository
+from ai_quiz_data import answer_label, current_weather, time_slot
 
-from menu_data import (CATEGORIES, CATEGORY_BY_ID, MENU, MENU_BY_ID,
-                       ROULETTE_PRIZES, STAFF_CALLS, STORE)
-from recommendations import DISCOUNT_PERCENT, combo_cart_line, recommend_combos
+from recommendations import combo_cart_line, recommend_combos
 
 KST = timezone(timedelta(hours=9))
 
+# 화면에 쓰는 모든 데이터는 repository 를 거친다 (DATA_SOURCE=dummy|api|auto, user_repository.py 참고).
+try:
+    REPO, CONTENT = repository.load_content()
+except repository.ContentUnavailable as e:
+    st.set_page_config(page_title="테이블오더", page_icon="🍺")
+    st.error(f"{e} 직원에게 문의해 주세요.")
+    st.stop()
+
+st.session_state.data_source = CONTENT.source  # "dummy" | "api" (점검·테스트용 표시)
+STORE, CATEGORIES, CATEGORY_BY_ID = CONTENT.store, CONTENT.categories, CONTENT.category_by_id
+MENU, MENU_BY_ID = CONTENT.menu, CONTENT.menu_by_id
+ROULETTE_PRIZES, STAFF_CALLS = CONTENT.roulette_prizes, CONTENT.staff_calls
+QUESTIONS, WEATHER, RULES = CONTENT.quiz_questions, CONTENT.weather, CONTENT.rules
+DISCOUNT_PERCENT = RULES["discount_percent"]
+
 st.set_page_config(page_title=f"{STORE['name']} 테이블오더", page_icon="🍺",
                    layout="wide", initial_sidebar_state="collapsed")
+
 
 # ============================== 상태 ==============================
 def init_state():
@@ -118,7 +133,7 @@ def go(page):
 
 # ============================== 다이얼로그 ==============================
 def thumb_html(item, qty_in_cart=0, big=False):
-    c1, c2 = CATEGORY_BY_ID[item["cat"]][3]
+    c1, c2 = CATEGORY_BY_ID[item["cat"]]["colors"]
     size = " big" if big else ""
     badges = ""
     for t in item["tags"]:
@@ -149,7 +164,10 @@ def confirm_dialog():
         st.rerun()
     if c2.button("주문하기", type="primary", width="stretch"):
         no = len(st.session_state.orders) + 1
-        st.session_state.orders.append({"no": no, "ts": time.time(), "time": datetime.now().strftime("%H:%M"),
+        server_no = REPO.create_order(st.session_state.table, [dict(l) for l in cart.values()], cart_total(),
+                                      st.session_state.access_token)
+        no = server_no or no  # 서버가 주문번호를 주면 그것을 쓴다
+        st.session_state.orders.append({"no": no, "ts": time.time(), "time": datetime.now(KST).strftime("%H:%M"),
                                         "lines": list(cart.values()), "total": cart_total(),
                                         "member": (st.session_state.member or {}).get("nickname")})
         st.session_state.cart = {}
@@ -181,7 +199,8 @@ def orders_dialog():
 def staff_dialog():
     picks = st.pills("필요한 항목을 선택해 주세요", STAFF_CALLS, selection_mode="multi")
     if st.button("호출하기", type="primary", width="stretch", disabled=not picks):
-        st.session_state.calls.append((datetime.now().strftime("%H:%M"), picks))
+        REPO.create_call(st.session_state.table, list(picks))
+        st.session_state.calls.append((datetime.now(KST).strftime("%H:%M"), picks))
         st.toast("직원이 곧 도착합니다 🙋", icon="🔔")
         st.rerun()
 
@@ -454,10 +473,10 @@ def render_header():
 def render_categories():
     st.button("💬 AI 질문", key="open_quiz", width="stretch", type="primary", on_click=open_quiz,
               help="몇 가지 질문에 답하면 메뉴 조합을 추천해 드려요")
-    for cid, icon, name, _ in CATEGORIES:
-        if st.button(f"{icon}  {name}", key=f"cat_{cid}", width="stretch",
-                     type="primary" if st.session_state.cat == cid else "secondary"):
-            st.session_state.cat = cid
+    for c in CATEGORIES:
+        if st.button(f"{c['icon']}  {c['name']}", key=f"cat_{c['id']}", width="stretch",
+                     type="primary" if st.session_state.cat == c["id"] else "secondary"):
+            st.session_state.cat = c["id"]
             st.rerun()
 
 
@@ -467,8 +486,8 @@ def render_menu():
         render_recommendations()
         return
     items = [m for m in MENU if "BEST" in m["tags"]] if cat == "best" else [m for m in MENU if m["cat"] == cat]
-    _, icon, name, _ = CATEGORY_BY_ID[cat]
-    st.html(f'<div class="section-title">{icon} {name} <span>{len(items)}</span></div>')
+    category = CATEGORY_BY_ID[cat]
+    st.html(f'<div class="section-title">{category["icon"]} {category["name"]} <span>{len(items)}</span></div>')
     with st.container(horizontal=True, key="menu_grid"):
         for item in items:
             with st.container(key=f"card_{item['id']}"):
@@ -479,6 +498,15 @@ def render_menu():
                              disabled=item["soldout"]):
                     cart_add(item, "", item["price"], 1)
                     st.rerun()
+
+
+def log_recommendation(params, combos):
+    """추천 조합이 노출된 사실을 저장소에 남긴다(AI 추천 적중률 계산용). 같은 결과는 한 번만."""
+    ss = st.session_state
+    key = (tuple(sorted(params.items(), key=lambda kv: kv[0])), tuple(c["id"] for c in combos))
+    if combos and ss.get("last_rec_key") != key:
+        ss.last_rec_key = key
+        REPO.log_recommendation(ss.table, params, [c["id"] for c in combos], ss.access_token)
 
 
 def render_combo_cards(combos):
@@ -519,7 +547,8 @@ def render_recommendations():
             drink = c4.selectbox("함께 마실 음료", ["맥주", "소주", "음료", "없이"], key="ai_drink")
         st.caption("선택한 조건에 따라 추천이 바로 바뀝니다. 예산은 한 조합의 할인 후 총액 기준입니다.")
     lines = list(st.session_state.cart.values()) + [line for order in st.session_state.orders for line in order["lines"]]
-    combos = recommend_combos(people, budget, spicy, drink, lines)
+    combos = recommend_combos(people, budget, spicy, drink, lines, menu_by_id=MENU_BY_ID, rules=RULES)
+    log_recommendation({"people": people, "budget": budget, "spicy": spicy, "drink": drink}, combos)
     st.html(f'<div class="section-title ai-results-title">나에게 맞는 추천 <span>{len(combos)}</span>'
             f'<small>{people}명 · {won(budget)} 이하</small></div>')
     if not combos:
@@ -563,11 +592,11 @@ def render_quiz_question(step):
     c_close.button("✕", key="quiz_close", on_click=go, args=("menu",), width="stretch", help="닫고 메뉴로 돌아가기")
     st.html(f'<div class="qz-group">{escape(q["group"])}</div><h2 class="qz-title">{escape(q["title"])}</h2>')
     with st.container(horizontal=True, key="quiz_grid"):
-        for i, (value, label, emoji) in enumerate(q["options"]):
+        for i, o in enumerate(q["options"]):
             with st.container(key=f"quiz_opt_{i}"):
-                st.html(f'<div class="qz-emoji">{emoji}</div>')
-                st.button(label, key=f"quiz_pick_{q['id']}_{i}", width="stretch", on_click=quiz_answer,
-                          args=(q["id"], value), type="primary" if answers.get(q["id"]) == value else "secondary")
+                st.html(f'<div class="qz-emoji">{o["emoji"]}</div>')
+                st.button(o["label"], key=f"quiz_pick_{q['id']}_{i}", width="stretch", on_click=quiz_answer,
+                          args=(q["id"], o["value"]), type="primary" if answers.get(q["id"]) == o["value"] else "secondary")
     st.html('<div class="qz-hint">선택하면 바로 다음 질문으로 넘어가요 · 시간대와 날씨는 자동으로 반영돼요</div>')
 
 
@@ -575,13 +604,14 @@ def render_quiz_result():
     ss = st.session_state
     a = ss.quiz["answers"]
     hour, slot = time_slot()
-    weather = current_weather(st.query_params.get("weather"))
-    w_label, w_icon = WEATHER[weather]
+    weather = current_weather(WEATHER, st.query_params.get("weather"))
+    w_label, w_icon = WEATHER["types"][weather]["label"], WEATHER["types"][weather]["icon"]
     lines = list(ss.cart.values()) + [line for order in ss.orders for line in order["lines"]]
-    combos = recommend_combos(a["people"], a["budget"], a["spicy"], "맥주", lines, hour=hour, weather=weather,
-                              hunger=a["hunger"], stress=a["stress"], kind=a["kind"], intent=a["intent"],
-                              gender=a["gender"])
-    chips = "".join(f'<span class="qz-chip">{escape(answer_label(q["id"], a[q["id"]]))}</span>' for q in QUESTIONS)
+    combos = recommend_combos(a["people"], a["budget"], a["spicy"], "맥주", lines, menu_by_id=MENU_BY_ID, rules=RULES,
+                              hour=hour, weather=weather, hunger=a["hunger"], stress=a["stress"], kind=a["kind"],
+                              intent=a["intent"], gender=a["gender"])
+    log_recommendation({**a, "hour": hour, "weather": weather}, combos)
+    chips = "".join(f'<span class="qz-chip">{escape(answer_label(QUESTIONS, q["id"], a[q["id"]]))}</span>' for q in QUESTIONS)
     st.html('<div class="ai-hero"><div class="ai-eyebrow">✨ AI 질문 결과</div><h2>맞춤 메뉴 조합이 완성됐어요</h2>'
             f'<p>답변해 주신 {len(QUESTIONS)}가지와 오늘의 상황을 반영했어요.</p></div>'
             f'<div class="qz-chips">{chips}</div>'

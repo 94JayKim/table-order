@@ -51,7 +51,22 @@ def _me(m: dict) -> dict:
 
 @router.get("/store")
 async def store_info(settings: Settings = Depends(get_settings)):
-    return {"name": settings.store_name, "branch": settings.store_branch, "tables": settings.store_tables}
+    return {"name": settings.store_name, "branch": settings.store_branch, "slogan": settings.store_slogan,
+            "tables": settings.store_tables}
+
+
+@router.get("/content")
+async def all_content(request: Request):
+    """화면용 콘텐츠 전체(카테고리·룰렛·직원호출 항목·AI 질문·날씨·추천 규칙)를 한 번에 내려준다."""
+    return request.app.state.content.all()
+
+
+@router.get("/content/{name}")
+async def one_content(name: str, request: Request):
+    data = request.app.state.content.get(name)
+    if data is None:
+        raise HTTPException(404, "없는 콘텐츠입니다.")
+    return data
 
 
 @router.get("/menus")

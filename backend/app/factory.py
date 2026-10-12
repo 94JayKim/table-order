@@ -7,6 +7,7 @@ from app.core.settings import Settings, get_settings
 from app.routers import admin, auth, user
 from app.services.kakao import KakaoClient
 from app.services.sens import SmsService
+from app.stores.content import ContentStore
 from app.stores.db import Database
 from app.stores.login_sessions import LoginSessionStore
 from app.stores.members import MemberStore
@@ -31,6 +32,7 @@ def create_app(settings: Settings | None = None, sms_clock=None, sms_http=None) 
     app.state.login_store = LoginSessionStore(settings.login_ttl_seconds)
     app.state.members = MemberStore(db)
     app.state.shop = ShopStore(db)
+    app.state.content = ContentStore(db)
     app.state.sms_logs = SmsLogStore(db)
     app.state.sms = SmsService(settings, app.state.members, app.state.sms_logs, clock=sms_clock, http=sms_http)
     app.state.kakao = KakaoClient(settings)

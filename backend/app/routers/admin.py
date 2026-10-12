@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Query
 from pydantic import BaseModel, Field
 
 from app.core.dependencies import require_admin
@@ -14,9 +14,13 @@ from datetime import datetime
 
 router = APIRouter(prefix="/admin/api", tags=["관리자"], dependencies=[Depends(require_admin)])
 
-CATEGORIES = [{"id": "chicken", "name": "치킨·튀김"}, {"id": "anju", "name": "안주"}, {"id": "soup", "name": "탕·전골"},
-              {"id": "beer", "name": "맥주"}, {"id": "soju", "name": "소주·막걸리"}, {"id": "side", "name": "음료·사이드"}]
-CAT_IDS = {c["id"] for c in CATEGORIES}
+NON_MENU_CATEGORIES = {"ai", "best"}  # 화면용 가상 카테고리(AI 추천 조합·인기메뉴)에는 메뉴를 직접 넣지 않는다
+
+
+def menu_categories(request: Request) -> list[dict]:
+    """메뉴를 넣을 수 있는 카테고리. 손님 화면의 카테고리 콘텐츠에서 가져온다."""
+    return [{"id": c["id"], "name": c["name"]} for c in request.app.state.content.get("categories")
+            if c["id"] not in NON_MENU_CATEGORIES]
 
 
 class MenuIn(BaseModel):
@@ -49,7 +53,7 @@ def _sms(request: Request) -> SmsService:
 
 @router.get("/menus")
 async def menus(request: Request):
-    return {"categories": CATEGORIES, "menus": request.app.state.shop.menus()}
+    return {"categories": menu_categories(request), "menus": request.app.state.shop.menus()}
 
 
 @router.put("/menus/{menu_id}")
@@ -57,7 +61,7 @@ async def save_menu(menu_id: str, body: MenuIn, request: Request):
     """없는 id 면 새 메뉴를 만든다(이름·카테고리·가격 필수), 있으면 보낸 필드만 수정한다."""
     shop = request.app.state.shop
     fields = body.model_dump(exclude_none=True)
-    if "cat" in fields and fields["cat"] not in CAT_IDS:
+    if "cat" in fields and fields["cat"] not in {c["id"] for c in menu_categories(request)}:
         raise HTTPException(422, "알 수 없는 카테고리입니다.")
     if not shop.menu(menu_id) and not {"name", "cat", "price"} <= fields.keys():
         raise HTTPException(422, "새 메뉴는 name, cat, price 가 필요합니다.")
@@ -149,3 +153,16 @@ async def sms_logs(request: Request):
 def _check_grades(grades: list[str]) -> None:
     if any(g not in GRADES for g in grades):
         raise HTTPException(422, f"등급은 {GRADES} 중에서 고르세요.")
+
+
+@router.put("/content/{name}")
+async def save_content(name: str, request: Request, data: dict | list = Body(...)):
+    """콘텐츠를 통째로 교체한다. 기존과 같은 종류(목록/객체)이고 비어 있지 않아야 한다."""
+    store = request.app.state.content
+    current = store.get(name)
+    if current is None:
+        raise HTTPException(404, "없는 콘텐츠입니다.")
+    if type(data) is not type(current) or not data:
+        raise HTTPException(422, f"{name} 는 비어 있지 않은 {'목록' if isinstance(current, list) else '객체'} 여야 합니다.")
+    store.set(name, data)
+    return data

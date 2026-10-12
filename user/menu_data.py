@@ -1,4 +1,7 @@
-"""역전할머니맥주 - 더미 메뉴 데이터"""
+"""역전할머니맥주 - 더미 데이터 (화면용 콘텐츠).
+
+이 파일의 모양은 서버 API 응답과 같다(JSON 그대로). 서버로 바꿀 때는 user_repository.py 만 보면 된다.
+"""
 
 STORE = {
     "name": "역전할머니맥주",
@@ -7,18 +10,18 @@ STORE = {
     "tables": 30,
 }
 
-# (id, 아이콘, 이름, 카드 배경 그라데이션)
+# 카테고리: API(/api/content 의 categories)와 같은 모양. colors 는 메뉴 카드 배경 그라데이션.
 CATEGORIES = [
-    ("ai", "✨", "AI 추천 조합", ("#a78bfa", "#6d28d9")),
-    ("best", "🔥", "인기메뉴", ("#ff7a18", "#af002d")),
-    ("chicken", "🍗", "치킨·튀김", ("#f6b93b", "#e55039")),
-    ("anju", "🍢", "안주", ("#b8e994", "#38ada9")),
-    ("soup", "🍲", "탕·전골", ("#ff6b6b", "#7d1d3f")),
-    ("beer", "🍺", "맥주", ("#fbc531", "#c27c0e")),
-    ("soju", "🍶", "소주·막걸리", ("#74b9ff", "#2d3a8c")),
-    ("side", "🥤", "음료·사이드", ("#a29bfe", "#4b3f9e")),
+    {"id": "ai", "icon": "✨", "name": "AI 추천 조합", "colors": ["#a78bfa", "#6d28d9"]},
+    {"id": "best", "icon": "🔥", "name": "인기메뉴", "colors": ["#ff7a18", "#af002d"]},
+    {"id": "chicken", "icon": "🍗", "name": "치킨·튀김", "colors": ["#f6b93b", "#e55039"]},
+    {"id": "anju", "icon": "🍢", "name": "안주", "colors": ["#b8e994", "#38ada9"]},
+    {"id": "soup", "icon": "🍲", "name": "탕·전골", "colors": ["#ff6b6b", "#7d1d3f"]},
+    {"id": "beer", "icon": "🍺", "name": "맥주", "colors": ["#fbc531", "#c27c0e"]},
+    {"id": "soju", "icon": "🍶", "name": "소주·막걸리", "colors": ["#74b9ff", "#2d3a8c"]},
+    {"id": "side", "icon": "🥤", "name": "음료·사이드", "colors": ["#a29bfe", "#4b3f9e"]},
 ]
-CATEGORY_BY_ID = {c[0]: c for c in CATEGORIES}
+CATEGORY_BY_ID = {c["id"]: c for c in CATEGORIES}
 
 def _m(id_, cat, name, desc, price, emoji, tags=(), soldout=False):
     return {

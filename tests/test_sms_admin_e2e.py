@@ -71,8 +71,9 @@ def test_all_admin_pages_render_after_login(server):
         assert not app.exception, page
 
 
-def test_login_without_server_shows_message():
+def test_api_mode_without_server_shows_message(monkeypatch):
     import httpx
+    monkeypatch.setenv("DATA_SOURCE", "api")
     api.set_client(httpx.Client(base_url="http://127.0.0.1:9", timeout=1))
     try:
         app = login()

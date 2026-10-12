@@ -332,10 +332,23 @@ button:focus-visible { outline: 3px solid #ffcf54 !important; outline-offset: 3p
   .qz-emoji { height: 80px; font-size: 52px; }
 }
 
-/* Desktop: keep the splash within the viewport (must follow the base rw_box/splash_bottom rules). */
-@media (min-width: 761px) {
-  .st-key-rw_box { width: min(88vw, 440px, max(220px, calc(100dvh - 515px))); margin-top: 24px; }
-  .st-key-splash_bottom { margin-top: 28px; }
+/* Keep the splash (roulette, and the result box after spinning) within the viewport so the page never scrolls. */
+.st-key-rw_box { --rw-reserve: 515px; width: min(88vw, 440px, max(190px, calc(100dvh - var(--rw-reserve)))); margin-top: 24px; }
+[data-testid="stMain"]:has(.rw-result) .st-key-rw_box { --rw-reserve: 665px; }
+.st-key-splash_bottom { margin-top: 28px; }
+.rw-result { margin-top: 20px; }
+@media (max-width: 760px) {
+  .st-key-rw_box { --rw-reserve: 565px; }
+  [data-testid="stMain"]:has(.rw-result) .st-key-rw_box { --rw-reserve: 715px; }
+}
+@media (max-height: 800px) {
+  .rw-title .fork, .rw-title .q, .rw-title .s, .rw-result .t, .rw-result .n { display: none; }
+  .rw-title h2 { font-size: clamp(24px, 5.2vw, 40px); margin: 0; }
+  .rw-result { padding: 8px 14px; margin-top: 14px; }
+  .rw-result .p { font-size: 18px; margin: 0; }
+  .st-key-rw_box { --rw-reserve: 360px; margin-top: 18px; }
+  [data-testid="stMain"]:has(.rw-result) .st-key-rw_box { --rw-reserve: 425px; }
+  .st-key-splash_bottom { margin-top: 18px; }
 }
 @media (min-width: 761px) and (max-width: 1100px) {
   .st-key-order_layout > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2) { max-height: calc(100dvh - 280px); }

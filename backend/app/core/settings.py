@@ -8,9 +8,19 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    app_env: str = "dev"  # prod 이면 기본 비밀값(change-me)으로는 기동하지 않는다
     database_url: str = "sqlite:///./app.db"
     cors_origins: list[str] = ["http://localhost:8501", "http://localhost:8502"]
     admin_token: str = "change-me"
+
+    store_name: str = "역전할머니맥주"
+    store_branch: str = "홍대점"
+    store_tables: int = 30
+
+    # 고객 등급 기준 (임시값, 정책 확정 후 조정)
+    grade_repeat_visits: int = 2
+    grade_regular_visits: int = 5
+    grade_dormant_days: int = 60
 
     # QR 로그인 / 카카오 (docs/PRODUCTION_PLAN.md 1장)
     public_base_url: str = "http://localhost:8000"  # 휴대폰이 접속할 서버 주소 (QR에 들어감)

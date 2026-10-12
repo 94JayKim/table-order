@@ -22,3 +22,10 @@ def current_member(request: Request, authorization: str = Header(default=""),
     if not member:
         raise HTTPException(status_code=401, detail="로그인이 필요합니다.")
     return member
+
+
+def optional_member(request: Request, authorization: str = Header(default=""),
+                    settings: Settings = Depends(get_settings)) -> dict | None:
+    """로그인 여부와 상관없이 쓰는 API(주문 등)에서 회원이면 회원 정보를 붙인다. 잘못된 토큰은 비회원으로 본다."""
+    member_id = tokens.decode(authorization.removeprefix("Bearer ").strip(), settings.jwt_secret)
+    return request.app.state.members.get(member_id) if member_id else None

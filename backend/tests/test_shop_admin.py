@@ -1,0 +1,88 @@
+import pytest
+from fastapi.testclient import TestClient
+
+from app.factory import create_app
+from tests.conftest import ADMIN, login, settings
+
+
+def test_menu_seeded_and_admin_edits_reach_users(client):
+    menus = client.get("/api/menus").json()
+    assert len(menus) == 60 and {"id", "name", "price", "soldout", "weight", "spicy", "set_ok", "tags"} <= menus[0].keys()
+    r = client.put("/admin/api/menus/c2", headers=ADMIN, json={"weight": 90, "soldout": True, "price": 21000})
+    assert r.status_code == 200 and r.json()["weight"] == 90 and r.json()["name"] == "간장마늘 치킨"
+    c2 = next(m for m in client.get("/api/menus").json() if m["id"] == "c2")
+    assert c2["soldout"] is True and c2["price"] == 21000 and c2["weight"] == 90
+
+
+def test_admin_menu_create_delete_and_validation(client):
+    body = {"name": "신메뉴", "cat": "anju", "price": 9000}
+    assert client.put("/admin/api/menus/new1", headers=ADMIN, json=body).status_code == 200
+    assert client.put("/admin/api/menus/new2", headers=ADMIN, json={"name": "x"}).status_code == 422
+    assert client.put("/admin/api/menus/new1", headers=ADMIN, json={"cat": "nope"}).status_code == 422
+    assert client.put("/admin/api/menus/new1", headers=ADMIN, json={"weight": 101}).status_code == 422
+    assert client.delete("/admin/api/menus/new1", headers=ADMIN).status_code == 204
+    assert client.delete("/admin/api/menus/new1", headers=ADMIN).status_code == 404
+
+
+def test_admin_routes_require_token(client):
+    for path in ("/admin/api/menus", "/admin/api/orders", "/admin/api/members", "/admin/api/stats",
+                 "/admin/api/marketing/sms/usage", "/admin/api/calls"):
+        assert client.get(path).status_code == 401
+
+
+def test_orders_calls_and_member_link(client):
+    h = login(client, "주문자")
+    line = {"id": "c1", "name": "역전 옛날통닭", "unit": 18000, "qty": 2}
+    combo = {"id": "combo:classic", "name": "[AI 조합] 바삭한 치킨 한 상", "unit": 20000, "qty": 1,
+             "components": [{"id": "c1", "name": "통닭", "qty": 1}]}
+    r = client.post("/api/orders", headers=h, json={"table_no": 5, "lines": [line, combo], "total": 56000})
+    assert r.status_code == 201 and r.json()["ai_combo"] is True
+    client.post("/api/orders", json={"table_no": 6, "lines": [line], "total": 36000})  # 비회원
+    assert client.post("/api/orders", json={"table_no": 6, "lines": [], "total": 0}).status_code == 422
+    orders = client.get("/admin/api/orders", headers=ADMIN).json()
+    assert [o["nickname"] for o in orders] == [None, "주문자"]
+    mine = client.get("/admin/api/orders", headers=ADMIN, params={"member_id": 1}).json()
+    assert len(mine) == 1 and mine[0]["ai_combo"] is True
+    cid = client.post("/api/calls", json={"table_no": 3, "items": ["💧 물"]}).json()["id"]
+    assert client.get("/admin/api/calls", headers=ADMIN).json()[0]["done"] is False
+    assert client.post(f"/admin/api/calls/{cid}/done", headers=ADMIN).json()["done"] is True
+    assert client.post("/admin/api/calls/999/done", headers=ADMIN).status_code == 404
+
+
+def test_members_grades_with_rule_preview_and_profile(client):
+    h = login(client, "단골")
+    for _ in range(4):
+        login(client, "단골")
+    login(client, "신입")
+    members = {m["nickname"]: m for m in client.get("/admin/api/members", headers=ADMIN).json()["members"]}
+    assert members["단골"]["grade"] == "단골" and members["신입"]["grade"] == "신규"
+    preview = client.get("/admin/api/members", headers=ADMIN, params={"regular": 10}).json()
+    assert {m["nickname"]: m["grade"] for m in preview["members"]}["단골"] == "재방문"
+    r = client.patch("/api/members/me", headers=h, json={"birth_year": 1995, "gender": "female", "phone": "010-1111-2222"})
+    assert r.status_code == 200
+    assert client.patch("/api/members/me", headers=h, json={"gender": "x"}).status_code == 422
+    m = next(m for m in client.get("/admin/api/members", headers=ADMIN).json()["members"] if m["nickname"] == "단골")
+    assert m["age_group"] == "30대" and m["gender"] == "여" and m["has_phone"] is True
+
+
+def test_stats_and_ai_hit_rate(client):
+    h = login(client, "통계")
+    client.patch("/api/members/me", headers=h, json={"birth_year": 2000, "gender": "male"})
+    for _ in range(4):
+        client.post("/api/recommendations", json={"table_no": 1, "params": {"people": 2}, "combo_ids": ["classic"]})
+    combo = {"id": "combo:classic", "name": "조합", "unit": 1, "qty": 1,
+             "components": [{"id": "c1", "name": "통닭", "qty": 2}, {"id": "b1", "name": "생맥주", "qty": 2}]}
+    client.post("/api/orders", headers=h, json={"table_no": 1, "lines": [combo], "total": 1})
+    client.post("/api/orders", json={"table_no": 2, "lines": [{"id": "a4", "name": "계란말이", "unit": 10000, "qty": 1}],
+                                     "total": 10000})
+    s = client.get("/admin/api/stats", headers=ADMIN).json()
+    assert s["today_orders"] == 2 and s["avg_order_amount"] == 5000
+    assert s["new_customers"] == 1 and s["genders"] == {"남": 1} and s["age_groups"]["20대"] == 1
+    assert s["ai"] == {**s["ai"], "recommendations": 4, "ai_orders": 1, "hit_rate": 0.25}
+    assert {"name": "통닭", "qty": 2} in s["popular_menus"]
+
+
+def test_prod_refuses_default_secrets():
+    with pytest.raises(RuntimeError):
+        create_app(settings(app_env="prod", jwt_secret="change-me"))
+    create_app(settings(app_env="prod"))  # 비밀값을 바꾸면 기동 가능

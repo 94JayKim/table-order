@@ -4,6 +4,7 @@
 (자세한 설명은 admin_repository.py 맨 위). 이 파일에는 데이터 출처에 대한 코드가 없다.
 """
 
+import importlib
 from datetime import datetime, timedelta, timezone
 from html import escape
 from pathlib import Path
@@ -12,10 +13,17 @@ import pandas as pd
 import streamlit as st
 
 import admin_repository as repo_mod
+import dashboard_stats
 import marketing_ai
+import order_filters
 from admin_dummy_data import Unsupported
-from dashboard_stats import customer_care, menu_alerts, summarize
-from order_filters import AI_ALL, AI_CHOICES, filter_orders
+
+# 배포 서버가 재시작 없이 새 코드를 받으면 예전 모듈이 메모리에 남아 ImportError 가 난다.
+# 상태가 없는 계산 모듈만 매 실행마다 다시 읽는다 (저장소·더미 데이터 모듈은 세션이 들고 있어서 제외).
+importlib.reload(dashboard_stats)
+importlib.reload(order_filters)
+from dashboard_stats import customer_care, menu_alerts, summarize  # noqa: E402
+from order_filters import AI_ALL, AI_CHOICES, filter_orders  # noqa: E402
 from admin_repository import COLOR_PRESETS, DEFAULT_RULE, GRADES, ICON_DEFAULT, SPICY_LABELS, CategoryError
 
 st.set_page_config(page_title="식당도우미 관리자", page_icon="🍺", layout="wide", initial_sidebar_state="auto")

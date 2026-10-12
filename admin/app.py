@@ -5,8 +5,12 @@
 
 import os
 
+from datetime import datetime
+
 import pandas as pd
 import streamlit as st
+
+import sens_demo
 
 from dummy_data import (AGE_GROUPS, GRADES, SPICY_LABELS, TODAY, make_customers,
                         make_orders, menu_frame)
@@ -24,6 +28,8 @@ ss.setdefault("menu", menu_frame())
 ss.setdefault("customers", make_customers())
 ss.setdefault("grade_rule", {"repeat": 2, "regular": 5, "dormant": 60})
 ss.setdefault("campaigns", [])
+ss.setdefault("sms_used", {"SMS": 0, "LMS": 0})
+ss.setdefault("opted_out", set())
 ss.setdefault("orders", make_orders(ss["customers"]))
 
 
@@ -167,18 +173,39 @@ def page_orders():
 
 
 def page_marketing():
-    st.subheader("마케팅 지원")
+    st.subheader("마케팅 지원 (문자 발송 데모)")
+    st.caption("SENS 연동 전 더미입니다. 실제 문자는 전송되지 않습니다. 수신 동의 고객에게만, 야간 제외, 월 무료 한도 안에서 발송합니다.")
     cust = customers_graded()
-    st.caption("우선순위: 카카오톡·문자 발송 → Redis 알림(후순위, 미구현). 수신 동의 고객에게만 발송됩니다.")
+    cust = cust[~cust["customer_id"].isin(ss["opted_out"])]
+    used = ss["sms_used"]
+    c1, c2 = st.columns(2)
+    c1.metric("이번 달 SMS", f"{used['SMS']} / {sens_demo.FREE_SMS}건")
+    c2.metric("이번 달 LMS", f"{used['LMS']} / {sens_demo.FREE_LMS}건")
+
     grades = st.multiselect("대상 등급", GRADES, default=["휴면"])
-    channel = st.radio("채널", ["카카오톡", "문자(SMS)"], horizontal=True)
-    msg = st.text_area("메시지", f"[{STORE['name']}] 오랜만이에요! 이번 주 방문하시면 안주 10% 할인해 드려요 🍺")
+    body = st.text_area("본문", "오랜만이에요! 이번 주 방문하시면 안주 10% 할인해 드려요.")
+    now = st.time_input("현재 시각 (데모: 야간 차단 확인용)", datetime.now().time().replace(second=0, microsecond=0))
+    text = sens_demo.build_message(body, STORE["name"])
     targets = cust[cust["등급"].isin(grades) & cust["마케팅 수신 동의"]]
-    st.info(f"발송 대상: **{len(targets)}명** (선택 등급 {int(cust['등급'].isin(grades).sum())}명 중 수신 동의자)")
-    if st.button("발송 (데모)", type="primary", disabled=targets.empty or not msg.strip()):
-        ss["campaigns"].insert(0, {"채널": channel, "대상 등급": ", ".join(grades),
-                                   "발송 수": len(targets), "메시지": msg})
-        st.success("발송 처리했습니다. 실제 메시지는 전송되지 않습니다.")
+    result = sens_demo.plan(len(targets), text, now, used)
+
+    st.text_area("실제 발송 문구 (광고 표기·수신거부 안내 자동 추가)", text, disabled=True, height=110)
+    st.caption(f"{result['bytes']}바이트 → **{result['type']}** · 수신 동의 대상 {len(targets)}명 · 잔여 {result['left']}건")
+    for problem in result["problems"]:
+        st.warning(problem)
+    if st.button("발송 (데모)", type="primary", disabled=not result["ok"] or not body.strip()):
+        used[result["type"]] += len(targets)
+        ss["campaigns"].insert(0, {"시각": now.strftime("%H:%M"), "유형": result["type"],
+                                   "대상 등급": ", ".join(grades), "발송 수": len(targets), "본문": text})
+        st.success(f"{len(targets)}명에게 발송 처리했습니다. (실제 전송 없음)")
+        st.rerun()
+
+    with st.expander("수신거부 처리 (데모)"):
+        who = st.selectbox("고객", cust["customer_id"], format_func=lambda i: f"{i} · {cust.set_index('customer_id').at[i, '닉네임']}")
+        if st.button("수신거부로 등록"):
+            ss["opted_out"].add(who)
+            st.rerun()
+        st.caption(f"수신거부 {len(ss['opted_out'])}명 — 이후 발송 대상에서 제외됩니다.")
     if ss["campaigns"]:
         st.write("발송 내역")
         st.dataframe(pd.DataFrame(ss["campaigns"]), hide_index=True, width="stretch")

@@ -11,6 +11,8 @@ from html import escape
 import streamlit as st
 from PIL import Image
 
+import login_demo
+
 from menu_data import (CATEGORIES, CATEGORY_BY_ID, MENU, MENU_BY_ID, PROMOS,
                        ROULETTE_PRIZES, STAFF_CALLS, STORE)
 from recommendations import DISCOUNT_PERCENT, combo_cart_line, recommend_combos
@@ -29,6 +31,9 @@ def init_state():
     ss.setdefault("table", 12)
     ss.setdefault("roulette", None)  # {"idx", "angle", "animate"} - 세션당 1회
     ss.setdefault("roulette_percent", 0)  # 다음 주문에 적용할 룰렛 할인율
+    ss.setdefault("member", None)    # QR 로그인한 회원 (더미)
+    ss.setdefault("bonus_spin_used", False)
+    ss.setdefault("login", login_demo.new_session(time.time()))
 
 
 def cart_add(item, opt_label, unit, qty):
@@ -193,9 +198,10 @@ CONFETTI = [(18, 18, 38, 12, "#f1566f", -35), (3, 40, 14, 14, "#5b8def", 20), (8
             (90, 40, 16, 16, "#9b6bd6", 10), (5, 70, 30, 10, "#2f8de0", 35), (96, 66, 24, 9, "#ffc933", 20)]
 
 
-def qr_png():
-    """데모용 가짜 QR 이미지 (실제 스캔 불가)."""
-    rnd, n, scale = random.Random(7), 25, 8
+@st.cache_resource
+def qr_png(seed: int = 7):
+    """데모용 가짜 QR 이미지 (실제 스캔 불가). 로그인 토큰마다 모양이 달라진다."""
+    rnd, n, scale = random.Random(seed), 25, 8
     img = Image.new("RGB", (n * scale, n * scale), "white")
     px = img.load()
     for r in range(n):
@@ -251,22 +257,79 @@ def render_roulette():
 
 
 # ============================== 화면 ==============================
+def finish_login():
+    """로그인 세션이 승인되면 회원 정보를 반영하고, 룰렛을 한 번 더 돌릴 수 있게 한다."""
+    ss = st.session_state
+    if ss.member or login_demo.state(ss.login, time.time()) != "logged_in":
+        return False
+    ss.member = ss.login["member"]
+    if ss.roulette and not ss.bonus_spin_used:
+        ss.roulette = None
+        ss.bonus_spin_used = True
+    return True
+
+
+def login_action(action):
+    ss = st.session_state
+    now = time.time()
+    if action == "scan":
+        login_demo.scan(ss.login, now)
+    elif action == "approve":
+        login_demo.approve(ss.login, now, {"nickname": ss.get("demo_nick") or "카카오손님", "kakao_id": "demo"})
+    elif action == "expire":
+        ss.login["created"] -= login_demo.TTL_SECONDS + 1
+    elif action == "refresh":
+        ss.login = login_demo.new_session(now)
+
+
+@st.fragment(run_every=2)
+def login_demo_panel():
+    """서버가 보내는 로그인 상태를 주기적으로 확인하는 부분 (정식 구현은 WebSocket)."""
+    ss = st.session_state
+    if finish_login():
+        st.rerun()
+    now = time.time()
+    status = login_demo.state(ss.login, now)
+    label = {"waiting": "휴대폰 스캔 대기 중", "scanned": "카카오 로그인 대기 중",
+             "expired": "QR이 만료되었어요", "logged_in": "로그인 완료"}[status]
+    st.caption(f"상태: **{label}** · 남은 시간 {login_demo.remaining(ss.login, now)}초 · 토큰 `{ss.login['token']}`")
+    st.text_input("카카오 닉네임 (데모)", "카카오손님", key="demo_nick")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.button("① 휴대폰 QR 스캔", key="login_scan", width="stretch", disabled=status != "waiting",
+              on_click=login_action, args=("scan",))
+    c2.button("② 카카오 로그인", key="login_approve", width="stretch", disabled=status != "scanned",
+              on_click=login_action, args=("approve",))
+    c3.button("만료시키기", key="login_expire", width="stretch", on_click=login_action, args=("expire",))
+    c4.button("QR 새로고침", key="login_refresh", width="stretch", type="primary" if status == "expired" else "secondary",
+              on_click=login_action, args=("refresh",))
+
+
 def render_splash():
     render_roulette()
+    member = st.session_state.member
     with st.container(horizontal=True, key="splash_bottom"):
         with st.container(horizontal=True, key="qr_card"):
-            st.image(qr_png(), width=96)
-            st.html('<div class="qr-text"><div class="a">회원가입하고</div><div class="b">룰렛 한번 더!</div>'
-                    '<div class="c">QR코드를 스캔하여<br>간단하게 가입하고<br>추가 기회를 받아보세요!</div></div>')
+            if member:
+                st.html(f'<div class="qr-text"><div class="a">{escape(member["nickname"])}님</div>'
+                        '<div class="b">로그인 완료!</div><div class="c">룰렛 한 번 더 돌릴 수 있어요.</div></div>')
+            else:
+                token = st.session_state.login["token"]
+                st.image(qr_png(int(token, 16) % 2**31), width=96)
+                st.html('<div class="qr-text"><div class="a">회원가입하고</div><div class="b">룰렛 한번 더!</div>'
+                        '<div class="c">QR코드를 스캔하여<br>간단하게 가입하고<br>추가 기회를 받아보세요!</div></div>')
         with st.container(key="start_cta"):
             st.button("🍴 메뉴선택  ›", type="primary", width="stretch", key="start_btn", on_click=go, args=("menu",))
+    if not member:
+        with st.expander("🧪 데모: 휴대폰 로그인 시뮬레이션 (정식 구현 시 제거)"):
+            st.caption(f"QR 주소 예시: https://example.com/m/login?t={st.session_state.login['token']} — 실제 QR이 아닙니다.")
+            login_demo_panel()
 
 
 def render_header():
     with st.container(key="header"):
         c_brand, c_table, c_actions = st.columns([3.5, 1.2, 4], vertical_alignment="center")
         c_brand.html(f'<div class="brand"><div class="logo">🍺</div><div><div class="name">{STORE["name"]}</div>'
-                     f'<div class="sub">{STORE["branch"]}</div></div></div>')
+                     f'<div class="sub">{STORE["branch"]}{f" · {escape(st.session_state.member["nickname"])}님" if st.session_state.member else ""}</div></div></div>')
         c_table.html(f'<div class="table-chip">TABLE <b>{st.session_state.table}</b></div>')
         with c_actions.container(horizontal=True, key="header_actions"):
             if st.button("🔔 직원호출", width="stretch"):

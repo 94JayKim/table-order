@@ -204,3 +204,10 @@ button:focus-visible { outline: 3px solid rgba(232,89,12,.4) !important; outline
 @media (max-width: 760px) {
   .block-container { padding: 60px 16px 40px !important; }
 }
+
+/* 사이드바 메뉴·버튼은 글자 길이가 아니라 사이드바 너비 100%로 */
+[data-testid="stSidebar"] [data-testid="stElementContainer"],
+[data-testid="stSidebar"] [data-testid="stRadio"],
+[data-testid="stSidebar"] [data-testid="stRadioGroup"],
+[data-testid="stSidebar"] [data-testid="stButton"],
+[data-testid="stSidebar"] [data-testid="stButton"] button { width: 100% !important; }

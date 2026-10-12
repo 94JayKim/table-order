@@ -55,4 +55,66 @@ def summarize(orders: pd.DataFrame, members: pd.DataFrame, tables: int | None = 
         "ai_avg_ticket": int(ai["금액"].mean()) if len(ai) else None,
         "plain_avg_ticket": int(plain["금액"].mean()) if len(plain) else None,
         "ai_share": len(ai) / len(df),
+        **_trend_stats(orders, df),
     }
+
+
+TICKET_BANDS = [("2만원 미만", 0, 20_000), ("2~4만원", 20_000, 40_000), ("4~6만원", 40_000, 60_000),
+                ("6~8만원", 60_000, 80_000), ("8만원 이상", 80_000, None)]
+
+
+def _change(now: int, before: int) -> float | None:
+    """증감률 (비교 대상이 0이면 None)."""
+    return (now - before) / before if before else None
+
+
+def _trend_stats(all_orders: pd.DataFrame, df: pd.DataFrame) -> dict:
+    """추이·비교·회원/비회원·주문 금액대·단골 고객 (최근 30일 df 기준, 주차 비교는 전체 주문에서 계산)."""
+    day = df["주문 시각"].dt.normalize()
+    daily = df.groupby(day)["금액"].sum()
+    last = day.max()
+    by_day = {d.strftime("%m/%d"): int(daily.get(d, 0)) for d in pd.date_range(last - timedelta(days=13), last)}
+    all_day = all_orders["주문 시각"].dt.normalize()
+    all_daily = all_orders.groupby(all_day)["금액"].sum()
+
+    def span(start, days):
+        return int(all_daily[(all_daily.index >= start) & (all_daily.index < start + timedelta(days=days))].sum())
+
+    this_week, prev_week = span(last - timedelta(days=6), 7), span(last - timedelta(days=13), 7)
+    last_day_rev, same_weekday_rev = int(all_daily.get(last, 0)), int(all_daily.get(last - timedelta(days=7), 0))
+    member = df[df["customer_id"].notna()]
+    guest = df[df["customer_id"].isna()]
+    spend = member.groupby("customer_id").agg(닉네임=("닉네임", "first"), 금액=("금액", "sum"), 횟수=("금액", "size"))
+    top = spend.sort_values("금액", ascending=False).head(5)
+    bands = {name: int(((df["금액"] >= lo) & ((df["금액"] < hi) if hi else True)).sum()) for name, lo, hi in TICKET_BANDS}
+    return {
+        "by_day": by_day,
+        "last_day": last.strftime("%m/%d"),
+        "week_revenue": this_week, "week_change": _change(this_week, prev_week),
+        "last_day_revenue": last_day_rev, "last_day_change": _change(last_day_rev, same_weekday_rev),
+        "member_order_share": len(member) / len(df),
+        "member_avg_ticket": int(member["금액"].mean()) if len(member) else None,
+        "guest_avg_ticket": int(guest["금액"].mean()) if len(guest) else None,
+        "ticket_bands": bands,
+        "top_customers": [{"name": r["닉네임"], "amount": int(r["금액"]), "orders": int(r["횟수"])} for _, r in top.iterrows()],
+        "top_customer_share": float(top["금액"].sum() / member["금액"].sum()) if len(member) and member["금액"].sum() else None,
+    }
+
+
+def customer_care(members: pd.DataFrame) -> dict:
+    """고객 관리 지표: 전체 회원, 휴면, 마케팅 수신 동의·거부."""
+    total = len(members)
+    if not total:
+        return {"total": 0}
+    return {
+        "total": total,
+        "dormant": int((members["등급"] == "휴면").sum()),
+        "consent": int((members["마케팅 수신 동의"] & ~members["수신거부"]).sum()),
+        "opted_out": int(members["수신거부"].sum()),
+    }
+
+
+def menu_alerts(menus: pd.DataFrame, popular: list[dict]) -> dict:
+    """품절 메뉴와, 인기 메뉴 TOP 중 품절된 메뉴 (놓치고 있는 매출 신호)."""
+    sold_out = menus[~menus["판매 여부"].astype(bool)]["메뉴명"].tolist()
+    return {"sold_out": sold_out, "popular_sold_out": [m["name"] for m in popular if m["name"] in sold_out]}

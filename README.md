@@ -20,7 +20,7 @@ uv run fastapi dev main.py
 
 # 페이지 (저장소 루트에서)
 pip install -r requirements.txt
-streamlit run user/app.py --server.port 8501    # 사용자
+streamlit run user/app.py --server.port 8501    # 사용자 (역전할머니맥주 데모 앱)
 streamlit run admin/app.py --server.port 8502   # 관리자
 ```
 

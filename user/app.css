@@ -17,9 +17,9 @@ button:focus-visible { outline: 3px solid #ffcf54 !important; outline-offset: 3p
 
 /* Only named layout containers are changed; widget columns keep their own layout. */
 .st-key-header { padding-bottom: 20px; border-bottom: 1px solid #2c2c33; }
-.st-key-header > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"] { display: grid; grid-template-columns: minmax(250px, 1fr) 110px minmax(390px, 1.5fr); align-items: center; gap: 20px; }
+.st-key-header > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"] { display: grid; grid-template-columns: minmax(250px, 1fr) 110px minmax(300px, 1.2fr) auto; align-items: center; gap: 20px; }
 .st-key-header > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] { width: 100%; flex: none; }
-.st-key-header_actions { display: grid !important; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px !important; }
+.st-key-header_actions { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px !important; }
 .st-key-header_actions > [data-testid="stElementContainer"] { width: 100% !important; }
 .st-key-header_actions button { padding: 8px; }
 .brand { display: flex; align-items: center; gap: 12px; }
@@ -32,7 +32,7 @@ button:focus-visible { outline: 3px solid #ffcf54 !important; outline-offset: 3p
 .st-key-order_layout > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"] { display: grid; grid-template-columns: 156px minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
 .st-key-order_layout > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] { width: 100%; flex: none; }
 .st-key-categories { gap: 10px; }
-[class*="st-key-cat_"] button { min-height: 54px; justify-content: flex-start; padding: 10px 14px; }
+[class*="st-key-cat_"] button, .st-key-open_quiz button { min-height: 54px; justify-content: flex-start; padding: 10px 14px; }
 [class*="st-key-cat_"] button p { font-size: 15px; white-space: nowrap; }
 .section-title, .cart-title { font-size: 20px; font-weight: 900; line-height: 1.5; }
 .section-title span, .cart-title span { color: #ffb703; margin-left: 4px; }
@@ -161,7 +161,7 @@ button:focus-visible { outline: 3px solid #ffcf54 !important; outline-offset: 3p
   .st-key-order_layout > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child { grid-column: 1 / -1; min-width: 0; }
   .st-key-categories { flex-direction: row !important; flex-wrap: nowrap !important; overflow-x: auto; gap: 8px !important; padding: 3px 3px 10px; }
   .st-key-categories > [data-testid="stElementContainer"] { width: auto !important; flex: 0 0 auto; }
-  [class*="st-key-cat_"] button { min-height: 44px; padding: 8px 14px; }
+  [class*="st-key-cat_"] button, .st-key-open_quiz button { min-height: 44px; padding: 8px 14px; }
 }
 @media (max-width: 760px) {
   .ai-hero { padding: 20px; }
@@ -359,5 +359,10 @@ button:focus-visible { outline: 3px solid #ffcf54 !important; outline-offset: 3p
   .st-key-order_layout > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2) { max-height: calc(100dvh - 280px); }
 }
 
-.st-key-theme_cta { width: auto !important; flex: 0 0 auto !important; }
-.st-key-theme_cta button { min-height: 44px; white-space: nowrap; }
+
+/* 우측 상단의 작은 처음으로·테마 전환 버튼 */
+[class*="_mini"][class*="st-key-"] { gap: 6px !important; justify-content: flex-end; width: auto !important; flex-wrap: nowrap !important; }
+[class*="_mini"][class*="st-key-"] > [data-testid="stElementContainer"] { width: auto !important; flex: 0 0 auto; }
+[class*="_mini"][class*="st-key-"] button { min-height: 34px; width: 34px; padding: 0; border-radius: 10px; }
+[class*="_mini"][class*="st-key-"] button p { font-size: 16px; line-height: 1; }
+.st-key-splash_mini { position: fixed; top: 12px; right: 14px; z-index: 50; }

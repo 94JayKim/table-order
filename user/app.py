@@ -140,10 +140,35 @@ def toggle_theme():
     ss.theme = "dark" if ss.theme == "light" else "light"
 
 
-def theme_button(key):
-    """다크 ↔ 라이트 전환 버튼. 눌러야 할 다음 모드를 라벨로 보여 준다."""
+def mini_buttons(prefix, home=True):
+    """우측 상단의 작은 '처음으로'·다크/라이트 전환 버튼. 전환 버튼은 눌러야 할 다음 모드를 아이콘으로 보여 준다."""
     light = st.session_state.theme == "light"
-    st.button("🌙 다크 모드" if light else "☀️ 라이트 모드", key=key, width="stretch", on_click=toggle_theme)
+    with st.container(horizontal=True, key=f"{prefix}_mini"):
+        if home:
+            st.button("🏠", key=f"{prefix}_home", help="처음으로", on_click=go, args=("splash",))
+        st.button("🌙" if light else "☀️", key=f"{prefix}_theme", help="다크 모드" if light else "라이트 모드",
+                  on_click=toggle_theme)
+
+
+def scroll_to_top_on_view_change():
+    """화면(페이지·카테고리·AI 질문 단계)이 바뀌면 모든 스크롤 영역을 맨 위로 올린다."""
+    ss = st.session_state
+    view = (ss.page, ss.cat if ss.page == "menu" else None, ss.quiz["step"] if ss.page == "ai_quiz" else None)
+    if ss.get("_view") == view:
+        return
+    first = "_view" not in ss
+    ss._view = view
+    if first:
+        return
+    ss._scroll_n = ss.get("_scroll_n", 0) + 1
+    st.html(f"""<script>/* {ss._scroll_n} */
+const up = () => {{
+  window.scrollTo(0, 0);
+  document.querySelectorAll('[data-testid="stMain"], [data-testid="stAppViewContainer"], .stApp, [class*="st-key-quiz_page"], [data-testid="stColumn"]')
+    .forEach(e => {{ e.scrollTop = 0; }});
+}};
+up(); setTimeout(up, 60); setTimeout(up, 250);
+</script>""", unsafe_allow_javascript=True)
 
 
 # ============================== 다이얼로그 ==============================
@@ -460,6 +485,7 @@ def render_members_log():
 def render_splash():
     ss = st.session_state
     poll_login_once()  # 팝업을 닫았거나 다시 그려진 뒤에도 완료된 로그인은 반영
+    mini_buttons("splash", home=False)
     render_roulette()
     member = ss.member
     with st.container(horizontal=True, key="splash_bottom"):
@@ -473,8 +499,6 @@ def render_splash():
                         '<div class="c">로그인하지 않아도<br>주문은 할 수 있어요.</div></div>')
             if st.button("➕ 다른 회원 로그인" if member else "📱 로그인", key="login_open"):
                 login_dialog("more")
-        with st.container(key="theme_cta"):
-            theme_button("theme_toggle_splash")
         with st.container(key="start_cta"):
             st.button("🍴 회원 주문  ›" if member else "🍴 비회원 주문  ›", type="primary", width="stretch",
                       key="start_btn", on_click=go, args=("menu",))
@@ -485,7 +509,7 @@ def render_splash():
 
 def render_header():
     with st.container(key="header"):
-        c_brand, c_table, c_actions = st.columns([3.5, 1.2, 4], vertical_alignment="center")
+        c_brand, c_table, c_actions, c_mini = st.columns([3.5, 1.2, 3, 1], vertical_alignment="center")
         c_brand.html(f'<div class="brand"><div class="logo">🍺</div><div><div class="name">{STORE["name"]}</div>'
                      f'<div class="sub">{STORE["branch"]}{f" · {escape(st.session_state.member["nickname"])}님 (회원)" if st.session_state.member else " · 비회원"}</div></div></div>')
         c_table.html(f'<div class="table-chip">TABLE <b>{st.session_state.table}</b></div>')
@@ -497,8 +521,8 @@ def render_header():
                 orders_dialog()
             if st.button(f"🛒 장바구니 ({cart_count()})", width="stretch"):
                 cart_dialog()
-            st.button("🏠 처음으로", width="stretch", on_click=go, args=("splash",))
-            theme_button("theme_toggle")
+        with c_mini:
+            mini_buttons("header")
 
 
 def render_categories():
@@ -714,6 +738,7 @@ def main():
     st.html(Path(__file__).with_name("app.css"))
     if st.session_state.theme == "light":
         st.html(Path(__file__).with_name("app_light.css"))
+    scroll_to_top_on_view_change()
     if st.session_state.page == "splash":
         render_splash()
         return

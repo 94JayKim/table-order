@@ -10,8 +10,15 @@ TODAY = date(2026, 10, 12)
 GRADES = ["신규", "재방문", "단골", "휴면"]
 AGE_GROUPS = ["20대 미만", "20대", "30대", "40대", "50대 이상"]
 
-CATEGORIES = [{"id": "chicken", "name": "치킨·튀김"}, {"id": "anju", "name": "안주"}, {"id": "soup", "name": "탕·전골"},
-              {"id": "beer", "name": "맥주"}, {"id": "soju", "name": "소주·막걸리"}, {"id": "side", "name": "음료·사이드"}]
+# 손님 화면의 카테고리 콘텐츠와 같은 모양 (id, icon, name, colors). 서버에는 AI 추천 조합·인기메뉴 같은 가상 카테고리도 섞여 있다.
+CATEGORIES = [
+    {"id": "chicken", "icon": "🍗", "name": "치킨·튀김", "colors": ["#f6b93b", "#e55039"]},
+    {"id": "anju", "icon": "🍢", "name": "안주", "colors": ["#b8e994", "#38ada9"]},
+    {"id": "soup", "icon": "🍲", "name": "탕·전골", "colors": ["#ff6b6b", "#7d1d3f"]},
+    {"id": "beer", "icon": "🍺", "name": "맥주", "colors": ["#fbc531", "#c27c0e"]},
+    {"id": "soju", "icon": "🍶", "name": "소주·막걸리", "colors": ["#74b9ff", "#2d3a8c"]},
+    {"id": "side", "icon": "🥤", "name": "음료·사이드", "colors": ["#a29bfe", "#4b3f9e"]},
+]
 
 
 def _menu(id_, cat, name, price, spicy=0, soldout=False, weight=50, set_ok=True, desc=""):
@@ -62,6 +69,7 @@ class DummyBackend:
     def __init__(self, seed: int = 7):
         r = random.Random(seed)
         self.menus_ = [dict(m) for m in MENUS]
+        self.categories_ = [dict(c) for c in CATEGORIES]
         self.members_ = []
         for i in range(1, 61):
             self.members_.append({
@@ -91,7 +99,15 @@ class DummyBackend:
 
     # ---- 메뉴 ----------------------------------------------------------------
     def menus(self) -> dict:
-        return {"categories": CATEGORIES, "menus": [dict(m) for m in self.menus_]}
+        return {"categories": [{"id": c["id"], "name": c["name"]} for c in self.categories_],
+                "menus": [dict(m) for m in self.menus_]}
+
+    def categories_full(self) -> list:
+        return [dict(c) for c in self.categories_]
+
+    def save_categories(self, categories: list) -> list:
+        self.categories_ = [dict(c) for c in categories]
+        return self.categories_full()
 
     def save_menu(self, menu_id: str, fields: dict) -> dict:
         cur = next((m for m in self.menus_ if m["id"] == menu_id), None)

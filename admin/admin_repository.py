@@ -29,6 +29,7 @@ from shared import api  # noqa: E402
 ENDPOINTS = {
     "store": "/api/store",
     "menus": "/admin/api/menus",              # GET {categories, menus} / PUT·DELETE /{id}
+    "categories": "/api/content/categories",  # GET 전체 목록(가상 카테고리 포함) / PUT /admin/api/content/categories 통째로 교체
     "members": "/admin/api/members",          # GET ?repeat&regular&dormant
     "orders": "/admin/api/orders",
     "stats": "/admin/api/stats",
@@ -68,6 +69,12 @@ class ApiBackend:
     def menus(self):
         return api.get(ENDPOINTS["menus"], self.token)
 
+    def categories_full(self):
+        return api.get(ENDPOINTS["categories"])
+
+    def save_categories(self, categories):
+        return api.put("/admin/api/content/categories", self.token, json=categories)
+
     def save_menu(self, menu_id, fields):
         return api.put(f"{ENDPOINTS['menus']}/{menu_id}", self.token, json=fields)
 
@@ -99,6 +106,17 @@ class ApiBackend:
         return api.post(ENDPOINTS["opt_out"].format(id=member_id), self.token)
 
 
+VIRTUAL_CATEGORIES = {"ai", "best"}  # 손님 화면에만 있는 가상 카테고리(AI 추천 조합·인기메뉴). 메뉴를 직접 넣지 않는다
+ICON_DEFAULT = "🍽️"
+# 새 카테고리의 메뉴 카드 배경색(손님 화면 그라데이션). 이름 → [시작색, 끝색]
+COLOR_PRESETS = {"주황": ["#f6b93b", "#e55039"], "초록": ["#b8e994", "#38ada9"], "빨강": ["#ff6b6b", "#7d1d3f"],
+                 "노랑": ["#fbc531", "#c27c0e"], "파랑": ["#74b9ff", "#2d3a8c"], "보라": ["#a29bfe", "#4b3f9e"]}
+
+
+class CategoryError(Exception):
+    """카테고리 이름 중복·빈 이름·메뉴가 남은 카테고리 삭제 같은 입력 문제 (화면에 그대로 보여줄 수 있는 메시지)."""
+
+
 class AdminRepository:
     """백엔드 JSON → 화면용 표/값. 더미든 서버든 같은 변환을 쓴다."""
 
@@ -121,6 +139,73 @@ class AdminRepository:
                  "매운 정도": SPICY_LABELS.get(m["spicy"], "안 매움"), "추천 가중치": m["weight"], "세트 가능": m["set_ok"]}
                 for m in payload["menus"]]
         return pd.DataFrame(rows, columns=MENU_COLUMNS)
+
+    # ---- 카테고리 CRUD (왼쪽 패널) ----
+    def category_list(self) -> list[dict]:
+        """메뉴를 넣을 수 있는 카테고리(가상 카테고리 제외): id, icon, name, colors, menu_count."""
+        counts: dict[str, int] = {}
+        for m in self.backend.menus()["menus"]:
+            counts[m["cat"]] = counts.get(m["cat"], 0) + 1
+        return [{**c, "menu_count": counts.get(c["id"], 0)} for c in self.backend.categories_full()
+                if c["id"] not in VIRTUAL_CATEGORIES]
+
+    def _save_categories(self, mutate) -> None:
+        """전체 목록(가상 카테고리 포함)을 읽어 고친 뒤 통째로 저장한다. 가상 카테고리는 건드리지 않는다."""
+        full = self.backend.categories_full()
+        mutate(full)
+        self.backend.save_categories(full)
+
+    @staticmethod
+    def _clean_name(name: str, others: list[dict]) -> str:
+        name = (name or "").strip()
+        if not name:
+            raise CategoryError("카테고리 이름을 입력해 주세요.")
+        if any(c["name"] == name for c in others):
+            raise CategoryError(f"'{name}' 카테고리가 이미 있어요.")
+        return name
+
+    def add_category(self, name: str, icon: str = ICON_DEFAULT, color: str = "보라") -> str:
+        """새 카테고리를 만들고 id 를 돌려준다."""
+        new_id = f"cat{uuid.uuid4().hex[:6]}"
+
+        def add(full):
+            full.append({"id": new_id, "icon": (icon or "").strip() or ICON_DEFAULT,
+                         "name": self._clean_name(name, full), "colors": COLOR_PRESETS.get(color, COLOR_PRESETS["보라"])})
+        self._save_categories(add)
+        return new_id
+
+    def update_category(self, category_id: str, name: str, icon: str, color: str | None = None) -> None:
+        def edit(full):
+            target = next((c for c in full if c["id"] == category_id), None)
+            if target is None:
+                raise CategoryError("없는 카테고리예요.")
+            target["name"] = self._clean_name(name, [c for c in full if c is not target])
+            target["icon"] = (icon or "").strip() or ICON_DEFAULT
+            if color:
+                target["colors"] = COLOR_PRESETS.get(color, target["colors"])
+        self._save_categories(edit)
+
+    def delete_category(self, category_id: str) -> None:
+        """메뉴가 남아 있으면 지울 수 없다(메뉴가 길을 잃지 않게)."""
+        used = next((c["menu_count"] for c in self.category_list() if c["id"] == category_id), 0)
+        if used:
+            raise CategoryError(f"메뉴 {used}개가 남아 있어요. 메뉴를 먼저 옮기거나 삭제해 주세요.")
+
+        def remove(full):
+            full[:] = [c for c in full if c["id"] != category_id]
+        self._save_categories(remove)
+
+    # ---- 메뉴 등록 (선택한 카테고리에) ----
+    def add_menu(self, category_id: str, name: str, price: int, desc: str = "", image_url: str = "",
+                 soldout: bool = False, spicy: str = "안 매움", weight: int = 50, set_ok: bool = False) -> str:
+        name = (name or "").strip()
+        if not name:
+            raise CategoryError("메뉴 이름을 입력해 주세요.")
+        menu_id = f"m{uuid.uuid4().hex[:6]}"
+        self.backend.save_menu(menu_id, {"name": name, "cat": category_id, "price": int(price), "desc": desc.strip(),
+                                         "image_url": image_url.strip(), "soldout": soldout,
+                                         "spicy": SPICY_VALUES.get(spicy, 0), "weight": int(weight), "set_ok": set_ok})
+        return menu_id
 
     def save_menus(self, new: pd.DataFrame, old: pd.DataFrame) -> dict:
         """표에서 바뀐 행만 저장하고, 지워진 행은 삭제한다. {'saved': n, 'deleted': n}"""

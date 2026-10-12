@@ -105,11 +105,26 @@ def test_repository_tables_have_identical_columns_for_dummy_and_server(server):
     assert row["닉네임"] == "계약" and row["테이블"] == 3 and "통닭 x1" in row["주문 내역"]
 
 
-def test_dummy_marketing_is_unsupported_with_a_clear_message():
+def test_dummy_marketing_works_like_the_server_without_sending_anything():
     repo = ar.AdminRepository(DummyBackend())
-    for call in (repo.sms_usage, lambda: repo.sms_preview(["신규"], "x"), repo.sms_logs):
-        with pytest.raises(Unsupported):
-            call()
+    usage = repo.sms_usage()
+    assert set(usage) == {"month", "used", "limit"} and usage["used"]["SMS"] > 0 and repo.sms_logs()
+    plan = repo.sms_preview(["휴면"], "안녕하세요")
+    assert plan["ok"] and plan["dry_run"] and plan["type"] == "SMS" and plan["targets"] > 0
+    assert not repo.sms_preview(["휴면"], "  ")["ok"]  # 빈 본문
+    before = len(repo.sms_logs())
+    result = repo.sms_send(["휴면"], "안녕하세요")
+    assert result["dry_run"] and result["count"] == plan["targets"]
+    assert len(repo.sms_logs()) == before + 1 and repo.sms_usage()["used"]["SMS"] == usage["used"]["SMS"] + plan["targets"]
+
+
+def test_dummy_opt_out_removes_member_from_targets():
+    repo = ar.AdminRepository(DummyBackend())
+    members = repo.members()
+    pick = members[members["마케팅 수신 동의"] & ~members["수신거부"] & (members["등급"] == "휴면")].iloc[0]
+    before = repo.sms_preview(["휴면"], "x")["targets"]
+    repo.opt_out(int(pick["customer_id"]))
+    assert repo.sms_preview(["휴면"], "x")["targets"] == before - 1
 
 
 # ---- 저장: 표에서 바뀐 것만 서버에 반영 ---------------------------------------------------------------------
@@ -159,7 +174,7 @@ def test_every_page_renders_in_dummy_mode_even_with_server_up(server, monkeypatc
     for page in PAGES:
         app.sidebar.radio[0].set_value(page).run()
         assert_clean(app, page)
-    assert any("서버(DATA_SOURCE=api)가 필요" in i.value for i in app.info)  # 마케팅은 더미에서 안내
+    assert any("더미 데이터로 만든 화면" in c.value for c in app.caption)  # 마케팅도 더미로 동작
 
 
 def test_every_page_renders_in_api_mode_with_real_data(server, monkeypatch):
@@ -192,3 +207,17 @@ def test_wrong_token_is_rejected_in_every_mode(server, monkeypatch):
     for mode in ("api", "dummy", "auto"):
         app = login(monkeypatch, mode, "wrong")
         assert app.error and not app.session_state["owner"], mode
+
+
+def test_marketing_screen_in_dummy_mode_can_preview_and_send(monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "change-me")
+    app = login(monkeypatch, "dummy", "change-me")
+    app.sidebar.radio[0].set_value("마케팅").run()
+    assert not app.exception and any("더미 데이터로 만든 화면" in c.value for c in app.caption)
+    assert any("발송 대상" in c.value for c in app.caption)  # 기본값(휴면)으로 바로 미리보기
+    before = len(app.session_state["repo"].sms_logs())
+    next(b for b in app.button if b.label == "발송").click().run()
+    assert not app.exception and len(app.session_state["repo"].sms_logs()) == before + 1
+    app.button(key="tpl_🆕 신메뉴 안내").click().run()  # 빠른 문구가 대상 등급·본문을 채운다
+    assert "먹태구이" in app.text_area(key="sms_body").value and "휴면" not in app.multiselect(key="sms_grades").value
+    assert any("발송 내역" in h.value for h in app.get("html"))

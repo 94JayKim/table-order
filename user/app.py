@@ -275,7 +275,7 @@ def login_action(action):
     if action == "scan":
         login_demo.scan(ss.login, now)
     elif action == "approve":
-        login_demo.approve(ss.login, now, {"nickname": ss.get("demo_nick") or "카카오손님", "kakao_id": "demo"})
+        login_demo.approve(ss.login, now, {"nickname": ss.get("demo_nick") or "카카오", "kakao_id": "demo"})
     elif action == "expire":
         ss.login["created"] -= login_demo.TTL_SECONDS + 1
     elif action == "refresh":
@@ -293,7 +293,7 @@ def login_demo_panel():
     label = {"waiting": "휴대폰 스캔 대기 중", "scanned": "카카오 로그인 대기 중",
              "expired": "QR이 만료되었어요", "logged_in": "로그인 완료"}[status]
     st.caption(f"상태: **{label}** · 남은 시간 {login_demo.remaining(ss.login, now)}초 · 토큰 `{ss.login['token']}`")
-    st.text_input("카카오 닉네임 (데모)", "카카오손님", key="demo_nick")
+    st.text_input("카카오 닉네임 (데모)", "카카오", key="demo_nick")
     c1, c2, c3, c4 = st.columns(4)
     c1.button("① 휴대폰 QR 스캔", key="login_scan", width="stretch", disabled=status != "waiting",
               on_click=login_action, args=("scan",))

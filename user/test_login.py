@@ -28,7 +28,7 @@ class LoginAppTests(unittest.TestCase):
         self.assertTrue(app.session_state["roulette"])
         app.button(key="login_scan").click().run()
         app.button(key="login_approve").click().run()
-        self.assertEqual(app.session_state["member"]["nickname"], "카카오손님")
+        self.assertEqual(app.session_state["member"]["nickname"], "카카오")
         self.assertIsNone(app.session_state["roulette"])  # 룰렛 한 번 더
         self.assertFalse(app.exception)
 

@@ -197,7 +197,7 @@ def page_marketing():
         used[result["type"]] += len(targets)
         ss["campaigns"].insert(0, {"시각": now.strftime("%H:%M"), "유형": result["type"],
                                    "대상 등급": ", ".join(grades), "발송 수": len(targets), "본문": text})
-        st.success(f"{len(targets)}명에게 발송 처리했습니다. (실제 전송 없음)")
+        st.toast(f"{len(targets)}명에게 발송 처리했습니다. (실제 전송 없음)", icon="✅")
         st.rerun()
 
     with st.expander("수신거부 처리 (데모)"):

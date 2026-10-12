@@ -18,7 +18,7 @@ from dashboard_stats import summarize
 from order_filters import AI_ALL, AI_CHOICES, filter_orders
 from admin_repository import COLOR_PRESETS, DEFAULT_RULE, GRADES, ICON_DEFAULT, SPICY_LABELS, CategoryError
 
-st.set_page_config(page_title="식당도우미 관리자", page_icon="🍺", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="식당도우미 관리자", page_icon="🍺", layout="wide", initial_sidebar_state="auto")
 st.html(Path(__file__).with_name("admin.css"))
 
 PAGES = ["대시보드", "메뉴 관리", "추천 가중치", "고객 등급", "주문 이력", "마케팅"]
@@ -372,7 +372,7 @@ def grade_rule_table(rule):
         ("3", "재방문", f"방문 <b>{rule['repeat']}~{rule['regular'] - 1}회</b>", ""),
         ("4", "신규", f"방문 <b>{rule['repeat'] - 1}회</b> 이하", "위에 해당하지 않는 나머지"),
     ]
-    th = "padding:8px 12px;text-align:left;border-bottom:2px solid rgba(128,128,128,.35);font-size:13px;opacity:.75"
+    th = "padding:8px 12px;white-space:nowrap;text-align:left;border-bottom:2px solid rgba(128,128,128,.35);font-size:13px;opacity:.75"
     td = "padding:8px 12px;border-bottom:1px solid rgba(128,128,128,.2);font-size:14px"
     body = "".join(
         f'<tr><td style="{td};width:48px;text-align:center">{n}</td><td style="{td};white-space:nowrap"><b>{g}</b></td>'

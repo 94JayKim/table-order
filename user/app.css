@@ -366,3 +366,28 @@ button:focus-visible { outline: 3px solid #ffcf54 !important; outline-offset: 3p
 [class*="_mini"][class*="st-key-"] button { min-height: 34px; width: 34px; padding: 0; border-radius: 10px; }
 [class*="_mini"][class*="st-key-"] button p { font-size: 16px; line-height: 1; }
 .st-key-splash_mini { position: fixed; top: 12px; right: 14px; z-index: 50; }
+
+/* ---------- 모바일 헤더: 한 줄 브랜드 + 아이콘, 아래 줄에 버튼 3개 ---------- */
+@media (max-width: 760px) {
+  .st-key-header > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"] { grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px 8px; }
+  .st-key-header > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(1) { grid-area: 1 / 1; }
+  .st-key-header > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2) { grid-area: 1 / 2; }
+  .st-key-header > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(3) { grid-area: 2 / 1 / 3 / 4; }
+  .st-key-header > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(4) { grid-area: 1 / 3; }
+  .table-chip { padding: 6px 10px; white-space: nowrap; }
+  .st-key-header_actions { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px !important; }
+  .st-key-header_actions button { min-height: 40px; padding: 4px; }
+  .st-key-header_actions button p { font-size: 13px; white-space: nowrap; }
+}
+@media (max-width: 760px) {
+  .st-key-quiz_top > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"] { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+  .st-key-quiz_top [data-testid="stColumn"] { width: 100%; flex: none; }
+  .st-key-quiz_close button { padding: 4px 10px; }
+  .st-key-quiz_close button p { font-size: 13px; white-space: nowrap; }
+  .st-key-quiz_back button { padding: 0; }
+}
+@media (max-width: 760px) {
+  [class*="st-key-quiz_opt_"] { padding: 12px 10px 10px; }
+  [class*="st-key-quiz_opt_"] button { padding: 4px 6px; }
+  [class*="st-key-quiz_opt_"] button p { font-size: 16px; word-break: keep-all; }
+}

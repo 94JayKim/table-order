@@ -4,6 +4,9 @@
 (자세한 설명은 admin_repository.py 맨 위). 이 파일에는 데이터 출처에 대한 코드가 없다.
 """
 
+from html import escape
+from pathlib import Path
+
 import pandas as pd
 import streamlit as st
 
@@ -11,7 +14,8 @@ import admin_repository as repo_mod
 from admin_dummy_data import Unsupported
 from admin_repository import COLOR_PRESETS, DEFAULT_RULE, GRADES, ICON_DEFAULT, SPICY_LABELS, CategoryError
 
-st.set_page_config(page_title="식당도우미 관리자", page_icon="🛠️", layout="wide")
+st.set_page_config(page_title="식당도우미 관리자", page_icon="🍺", layout="wide", initial_sidebar_state="expanded")
+st.html(Path(__file__).with_name("admin.css"))
 
 PAGES = ["대시보드", "메뉴 관리", "추천 가중치", "고객 등급", "주문 이력", "마케팅"]
 
@@ -25,66 +29,84 @@ ss.setdefault("menu_cat", None)  # 메뉴 관리에서 선택한 카테고리 id
 ss.setdefault("grade_rule", dict(DEFAULT_RULE))
 
 
+def page_head(title, sub=""):
+    st.html(f'<div class="page-head"><div><h1>{escape(title)}</h1>'
+            + (f"<p>{escape(sub)}</p>" if sub else "") + "</div></div>")
+
+
+def sec_title(text, small=""):
+    st.html(f'<div class="sec-title">{escape(text)}' + (f" <small>{escape(small)}</small>" if small else "") + "</div>")
+
+
+def kpi(label, value, unit="", sub="", accent=False):
+    return (f'<div class="kpi{" accent" if accent else ""}"><div class="k">{escape(label)}</div>'
+            f'<div class="v">{escape(str(value))}<small>{escape(unit)}</small></div>'
+            + (f'<div class="s">{escape(sub)}</div>' if sub else "") + "</div>")
+
+
+def kpi_row(*cards):
+    st.html('<div class="kpis">' + "".join(cards) + "</div>")
+
+
+def bars(data, unit="", ranked=False, empty="아직 데이터가 없어요."):
+    """가로 막대 목록(HTML). data: {이름: 값}"""
+    if not data:
+        return f'<div class="empty">{escape(empty)}</div>'
+    top = max(data.values()) or 1
+    rows = "".join(
+        f'<div class="bar-row"><span class="n" data-r="{i}">{escape(str(k))}</span>'
+        f'<span class="t"><i style="width:{max(v / top * 100, 2):.0f}%"></i></span><span class="c">{v:g}{unit}</span></div>'
+        for i, (k, v) in enumerate(data.items(), 1))
+    return f'<div class="bars{" rank-list" if ranked else ""}">{rows}</div>'
+
+
+def panel(title, hint, body):
+    return f'<div class="panel"><h3>{escape(title)}</h3><div class="hint">{escape(hint)}</div>{body}</div>'
+
+
 def login():
-    st.title("🛠️ 식당도우미 관리자")
-    st.caption("OWNER(사장님)만 접근할 수 있습니다. MANAGER·STAFF 권한은 1차 Prototype에서 사용하지 않습니다.")
-    token = st.text_input("관리자 토큰", type="password")
-    if st.button("로그인", type="primary"):
-        result = repo_mod.connect(token)
-        if result.error:
-            st.error(result.error)
-        else:
-            ss["owner"], ss["repo"], ss["token"], ss["notice"] = True, result.repo, token, result.notice
-            st.rerun()
-    st.info("백엔드 `.env`의 `ADMIN_TOKEN` 값을 입력하세요. (기본값 `change-me`)")
+    _, mid, _ = st.columns([1, 1.15, 1])
+    with mid:
+        st.html('<div style="height:8vh"></div><div style="text-align:center;margin-bottom:22px">'
+                '<div class="sb-logo" style="width:56px;height:56px;border-radius:16px;font-size:30px;margin:0 auto 14px">🍺</div>'
+                '<div style="font-size:26px;font-weight:800;letter-spacing:-.02em">식당도우미 관리자</div>'
+                '<div style="color:#8a857e;font-size:14px;margin-top:6px">사장님 전용 관리 화면이에요</div></div>')
+        with st.container(border=True):
+            token = st.text_input("관리자 토큰", type="password", placeholder="토큰을 입력하세요")
+            if st.button("로그인", type="primary", width="stretch"):
+                result = repo_mod.connect(token)
+                if result.error:
+                    st.error(result.error)
+                else:
+                    ss["owner"], ss["repo"], ss["token"], ss["notice"] = True, result.repo, token, result.notice
+                    st.rerun()
+        st.caption("백엔드 `.env`의 `ADMIN_TOKEN` 값을 입력하세요. (기본값 `change-me`) "
+                   "OWNER(사장님)만 접근할 수 있고, MANAGER·STAFF 권한은 1차 Prototype에서 사용하지 않습니다.")
 
 
 def page_dashboard(repo):
     s = repo.stats(ss["grade_rule"])
-    st.subheader("주문 통계")
-    a, b, c, d = st.columns(4)
-    a.metric("오늘 주문 수", f"{s['today_orders']}건")
-    b.metric("평균 주문금액", f"{s['avg_order_amount']:,}원" if s["today_orders"] else "-")
-    c.metric("오늘 신규 고객", f"{s['new_customers']}명")
-    d.metric("오늘 재방문 고객", f"{s['returning_customers']}명")
-
-    st.subheader("고객 분석")
-    l, r = st.columns(2)
-    with l:
-        st.caption("고객 연령대 (출생연도를 입력한 회원만)")
-        st.bar_chart(pd.Series(s["age_groups"], dtype="float"))
+    ai = s["ai"]
+    page_head("대시보드", "오늘 매장 현황을 한눈에 확인하세요")
+    kpi_row(
+        kpi("오늘 주문", s["today_orders"], "건", accent=True),
+        kpi("평균 주문금액", f"{s['avg_order_amount']:,}" if s["today_orders"] else "-", "원" if s["today_orders"] else ""),
+        kpi("오늘 신규 고객", s["new_customers"], "명"),
+        kpi("오늘 재방문 고객", s["returning_customers"], "명"),
+    )
+    sec_title("고객 분석")
+    l, r = st.columns(2, gap="medium")
+    l.html(panel("고객 연령대", "출생연도를 입력한 회원만 집계해요", bars(s["age_groups"], "명")))
+    r.html(panel("고객 성별", "회원 정보 기준", bars(s["genders"], "명")))
+    sec_title("메뉴 · AI 추천")
+    l, r = st.columns([3, 2], gap="medium")
+    l.html(panel("인기 메뉴 TOP 10", "주문 수량 기준",
+                 bars({m["name"]: m["qty"] for m in s["popular_menus"]}, "개", ranked=True, empty="아직 주문이 없어요.")))
     with r:
-        st.caption("고객 성별")
-        if s["genders"]:
-            st.bar_chart(pd.Series(s["genders"], dtype="float"))
-        else:
-            st.write("아직 데이터가 없어요.")
-
-    l, r = st.columns(2)
-    with l:
-        st.subheader("인기 메뉴 TOP 10")
-        if s["popular_menus"]:
-            st.bar_chart(pd.Series({m["name"]: m["qty"] for m in s["popular_menus"]}, dtype="float"), horizontal=True)
-        else:
-            st.write("아직 주문이 없어요.")
-    with r:
-        st.subheader("AI 추천 분석")
-        ai = s["ai"]
-        st.metric("AI 추천 적중률", f"{ai['hit_rate']:.0%}" if ai["hit_rate"] is not None else "-")
-        st.caption(f"임시 기준: {ai['definition']}. 정확한 계산 기준은 추가 정의가 필요합니다.")
-        st.metric("AI 추천 노출 / 조합이 포함된 주문", f"{ai['recommendations']}회 / {ai['ai_orders']}건")
-
-
-MENU_PAGE_CSS = """<style>
-[class*="st-key-mcat_"] button { min-height: 46px; }
-[class*="st-key-mcat_"] button > div, [class*="st-key-mcat_"] button [data-testid="stMarkdownContainer"] { width: 100%; justify-content: flex-start; }
-[class*="st-key-mcat_"] button p { font-size: 15px; font-weight: 700; text-align: left; width: 100%; }
-.st-key-mcat_panel { position: sticky; top: 60px; }
-.mcat-title { font-weight: 900; font-size: 16px; margin-bottom: 6px; }
-.mcat-hint { color: #8c8c96; font-size: 13px; line-height: 1.5; }
-.mmenu-head { display: flex; align-items: baseline; gap: 10px; margin: 2px 0 10px; }
-.mmenu-head b { font-size: 24px; font-weight: 900; } .mmenu-head span { color: #ffb703; font-weight: 800; }
-</style>"""
+        kpi_row(kpi("AI 추천 적중률", f"{ai['hit_rate']:.0%}" if ai["hit_rate"] is not None else "-",
+                    sub="임시 기준 · 정확한 계산 기준은 추가 정의가 필요해요"),
+                kpi("추천 노출", ai["recommendations"], "회", sub=f"조합이 포함된 주문 {ai['ai_orders']}건"))
+        st.caption(f"적중 기준(임시): {ai['definition']}")
 
 
 def select_category(category_id):
@@ -176,13 +198,13 @@ def render_menu_panel(repo, cats):
     if category is None:
         st.info("👈 왼쪽에서 카테고리를 클릭하면 그 카테고리에 메뉴를 등록하고 수정할 수 있어요.")
         if cats:
-            st.write("카테고리별 메뉴 수")
-            st.bar_chart(pd.Series({f"{c['icon']} {c['name']}": c["menu_count"] for c in cats}, dtype="float"))
+            st.html(panel("카테고리별 메뉴 수", "카테고리를 선택하면 메뉴를 관리할 수 있어요",
+                          bars({f"{c['icon']} {c['name']}": c["menu_count"] for c in cats}, "개")))
         return
     st.html(f'<div class="mmenu-head"><b>{category["icon"]} {category["name"]}</b><span>메뉴 {category["menu_count"]}개</span></div>')
     render_menu_register_form(repo, category)
 
-    st.write("등록된 메뉴")
+    sec_title("등록된 메뉴")
     df = repo.menus()
     old = df[df["카테고리"] == category["name"]].reset_index(drop=True)
     if old.empty:
@@ -216,8 +238,7 @@ def render_menu_panel(repo, cats):
 
 
 def page_menu(repo):
-    st.html(MENU_PAGE_CSS)
-    st.subheader("메뉴 관리")
+    page_head("메뉴 관리", "카테고리를 고른 뒤 메뉴를 등록하고 수정하세요")
     cats = repo.category_list()
     if ss["menu_cat"] and ss["menu_cat"] not in {c["id"] for c in cats}:
         ss["menu_cat"] = None  # 지워졌거나 서버에서 사라진 카테고리
@@ -229,8 +250,7 @@ def page_menu(repo):
 
 
 def page_weights(repo):
-    st.subheader("OWNER 추천 가중치")
-    st.caption("0~100. 높을수록 AI 추천 조합에 우선 반영됩니다. 50이 기본값입니다.")
+    page_head("추천 가중치", "0~100. 높을수록 AI 추천 조합에 우선 반영됩니다. 50이 기본값입니다.")
     menu = repo.menus()
     cat = st.selectbox("카테고리", ["전체"] + [c["name"] for c in repo.categories()])
     view = menu if cat == "전체" else menu[menu["카테고리"] == cat]
@@ -246,7 +266,7 @@ def page_weights(repo):
 
 
 def page_customers(repo):
-    st.subheader("고객 등급 관리")
+    page_head("고객 등급", "방문 이력으로 고객을 신규·재방문·단골·휴면으로 나눠요")
     rule = ss["grade_rule"]
     with st.expander("등급 분류 기준 (임시 — 추가 정의 필요)", expanded=True):
         c1, c2, c3 = st.columns(3)
@@ -255,15 +275,14 @@ def page_customers(repo):
         rule["dormant"] = c3.number_input("휴면: 마지막 방문 후 N일 이상", 7, 365, rule["dormant"])
         st.caption("그 외(방문 1회)는 신규 고객입니다. 이 값은 화면에서 미리 보는 용도이고 서버에는 저장되지 않아요.")
     cust = repo.members(rule)
-    cols = st.columns(4)
-    for col, g in zip(cols, GRADES):
-        col.metric(f"{g} 고객", f"{(cust['등급'] == g).sum()}명")
+    kpi_row(*[kpi(f"{g} 고객", int((cust["등급"] == g).sum()), "명") for g in GRADES])
+    st.html('<div style="height:16px"></div>')
     pick = st.multiselect("등급 필터", GRADES, default=GRADES)
     st.dataframe(cust[cust["등급"].isin(pick)], hide_index=True, width="stretch")
 
 
 def page_orders(repo):
-    st.subheader("주문 이력")
+    page_head("주문 이력", "들어온 주문을 전체 또는 고객별로 확인해요")
     orders = repo.orders()
     cust = repo.members(ss["grade_rule"]).set_index("customer_id")
     mode = st.radio("보기", ["전체 주문", "고객별 주문"], horizontal=True)
@@ -273,13 +292,14 @@ def page_orders(repo):
             return
         who = st.selectbox("고객", cust.index, format_func=lambda i: f"{cust.at[i, '닉네임']} ({i}) · {cust.at[i, '등급']}")
         orders = orders[orders["customer_id"] == who]
-        st.metric("누적 주문 금액", f"{int(orders['금액'].sum()):,}원")
+        kpi_row(kpi("누적 주문 금액", f"{int(orders['금액'].sum()):,}", "원"))
+        st.html('<div style="height:16px"></div>')
     st.dataframe(orders, hide_index=True, width="stretch",
                  column_config={"금액": st.column_config.NumberColumn(format="%d원")})
 
 
 def page_marketing(repo):
-    st.subheader("마케팅 지원 · 문자 발송")
+    page_head("마케팅", "수신 동의한 회원에게 문자를 보내 재방문을 이끌어요")
     try:
         usage = repo.sms_usage()
     except Unsupported as e:
@@ -290,9 +310,9 @@ def page_marketing(repo):
         return
     st.caption("수신 동의·휴대폰 번호가 있는 회원에게만, 야간(21~08시) 제외, 월 무료 한도 안에서 발송합니다. "
                "서버 설정 `SMS_DRY_RUN=true` 이면 실제 문자는 전송되지 않고 기록만 남습니다.")
-    c1, c2 = st.columns(2)
-    c1.metric("이번 달 SMS", f"{usage['used']['SMS']} / {usage['limit']['SMS']}건")
-    c2.metric("이번 달 LMS", f"{usage['used']['LMS']} / {usage['limit']['LMS']}건")
+    kpi_row(kpi("이번 달 SMS", f"{usage['used']['SMS']} / {usage['limit']['SMS']}", "건"),
+            kpi("이번 달 LMS", f"{usage['used']['LMS']} / {usage['limit']['LMS']}", "건"))
+    st.html('<div style="height:16px"></div>')
 
     grades = st.multiselect("대상 등급", GRADES, default=["휴면"])
     body = st.text_area("본문", "오랜만이에요! 이번 주 방문하시면 안주 10% 할인해 드려요.")
@@ -333,7 +353,7 @@ def page_marketing(repo):
 
     logs = repo.sms_logs()
     if logs:
-        st.write("발송 내역")
+        sec_title("발송 내역")
         st.dataframe(pd.DataFrame(logs)[["ts", "type", "status", "target_count", "request_id", "error", "content"]],
                      hide_index=True, width="stretch")
 
@@ -345,10 +365,13 @@ if not ss["owner"]:
 repo = ss["repo"]
 store = repo.backend.store()
 with st.sidebar:
-    st.title("🛠️ 관리자")
+    st.html(f'<div class="sb-brand"><div class="sb-logo">🍺</div><div><div class="sb-name">식당도우미</div>'
+            f'<div class="sb-sub">관리자 콘솔</div></div></div><div class="sb-label">MENU</div>')
+    page = st.radio("메뉴", PAGES, label_visibility="collapsed")
+    st.html('<div style="height:18px"></div><div class="sb-label">STORE</div>')
     st.caption(f"{store['name']} {store['branch']} · OWNER")
     st.caption("🟢 서버 데이터" if repo.source == "api" else "🧪 더미 데이터")
-    page = st.radio("메뉴", PAGES, label_visibility="collapsed")
+    st.html('<div style="height:10px"></div>')
     if st.button("로그아웃"):
         ss["owner"], ss["repo"] = False, None
         st.rerun()

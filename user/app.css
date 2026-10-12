@@ -51,9 +51,11 @@ button:focus-visible { outline: 3px solid #ffcf54 !important; outline-offset: 3p
 .mdesc { font-size: 12px; color: #a8a8b2; min-height: 36px; margin-top: 4px; line-height: 1.5; overflow-wrap: anywhere; }
 .mprice { font-size: 18px; font-weight: 900; color: #ffb703; margin-top: 8px; line-height: 1.5; }
 
-/* Desktop: scroll only the menu list, not the whole page. */
+/* Desktop: the page itself never scrolls; only the menu column, cart list and quiz/splash fit the viewport. */
 @media (min-width: 761px) {
-  .st-key-menu_grid { max-height: calc(100dvh - 210px); overflow-y: auto; padding-right: 6px; scrollbar-gutter: stable; }
+  .st-key-order_layout > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2) { max-height: calc(100dvh - 180px); overflow-y: auto; padding-right: 6px; scrollbar-gutter: stable; }
+  .st-key-cart_items { max-height: max(140px, calc(100dvh - 420px)); }
+  .st-key-quiz_page { max-height: calc(100dvh - 140px); overflow-y: auto; }
 }
 
 /* Personalized combination recommendations */
@@ -328,4 +330,13 @@ button:focus-visible { outline: 3px solid #ffcf54 !important; outline-offset: 3p
   .qz-title { font-size: 22px; }
   .st-key-quiz_grid > [data-testid="stLayoutWrapper"], .st-key-quiz_grid > [data-testid="stElementContainer"] { flex: 0 0 calc(50% - 7px) !important; width: calc(50% - 7px) !important; }
   .qz-emoji { height: 80px; font-size: 52px; }
+}
+
+/* Desktop: keep the splash within the viewport (must follow the base rw_box/splash_bottom rules). */
+@media (min-width: 761px) {
+  .st-key-rw_box { width: min(88vw, 440px, max(220px, calc(100dvh - 515px))); margin-top: 24px; }
+  .st-key-splash_bottom { margin-top: 28px; }
+}
+@media (min-width: 761px) and (max-width: 1100px) {
+  .st-key-order_layout > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2) { max-height: calc(100dvh - 280px); }
 }

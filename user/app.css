@@ -51,6 +51,11 @@ button:focus-visible { outline: 3px solid #ffcf54 !important; outline-offset: 3p
 .mdesc { font-size: 12px; color: #a8a8b2; min-height: 36px; margin-top: 4px; line-height: 1.5; overflow-wrap: anywhere; }
 .mprice { font-size: 18px; font-weight: 900; color: #ffb703; margin-top: 8px; line-height: 1.5; }
 
+/* Desktop: scroll only the menu list, not the whole page. */
+@media (min-width: 761px) {
+  .st-key-menu_grid { max-height: calc(100dvh - 210px); overflow-y: auto; padding-right: 6px; scrollbar-gutter: stable; }
+}
+
 /* Personalized combination recommendations */
 .ai-hero { position: relative; padding: 24px; border: 1px solid #65518a; border-radius: 18px; background: radial-gradient(ellipse at top right, #59327b 0, #30223f 45%, #211b2c 100%); }
 .ai-eyebrow { color: #d8c3ff; font-size: 13px; font-weight: 700; }

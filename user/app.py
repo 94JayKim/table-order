@@ -7,6 +7,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from html import escape
+from datetime import timedelta, timezone
 
 import streamlit as st
 import server
@@ -14,6 +15,8 @@ import server
 from menu_data import (CATEGORIES, CATEGORY_BY_ID, MENU, MENU_BY_ID,
                        ROULETTE_PRIZES, STAFF_CALLS, STORE)
 from recommendations import DISCOUNT_PERCENT, combo_cart_line, recommend_combos
+
+KST = timezone(timedelta(hours=9))
 
 st.set_page_config(page_title=f"{STORE['name']} 테이블오더", page_icon="🍺",
                    layout="wide", initial_sidebar_state="collapsed")
@@ -30,7 +33,8 @@ def init_state():
     ss.setdefault("roulette_percent", 0)  # 다음 주문에 적용할 룰렛 할인율
     ss.setdefault("member", None)    # QR 로그인한 회원 {id, nickname}
     ss.setdefault("access_token", None)
-    ss.setdefault("bonus_spin_used", False)
+    ss.setdefault("members", [])      # 이 태블릿에서 로그인한 회원 기록 (누적): {id, nickname, at, eligible, prize}
+    ss.setdefault("granted_ids", [])  # 룰렛 기회를 이미 받은 회원 id (회원당 1회)
     ss.setdefault("login", None)     # 발급된 QR 로그인 세션 {token, secret, qr_url, expires_in, created}
     ss.table = table_from_url()
 
@@ -144,7 +148,8 @@ def confirm_dialog():
     if c2.button("주문하기", type="primary", width="stretch"):
         no = len(st.session_state.orders) + 1
         st.session_state.orders.append({"no": no, "ts": time.time(), "time": datetime.now().strftime("%H:%M"),
-                                        "lines": list(cart.values()), "total": cart_total()})
+                                        "lines": list(cart.values()), "total": cart_total(),
+                                        "member": (st.session_state.member or {}).get("nickname")})
         st.session_state.cart = {}
         st.session_state.roulette_percent = 0
         st.toast(f"주문이 접수되었습니다 (주문번호 #{no})", icon="✅")
@@ -185,9 +190,15 @@ def cart_dialog():
 
 
 # ============================== 룰렛 ==============================
+def spins_left():
+    """남은 룰렛 기회 = 로그인했지만 아직 돌리지 않은 회원 수 (회원당 1회)."""
+    return sum(1 for m in st.session_state.members if m["eligible"] and m["prize"] is None)
+
+
 def spin_roulette():
     ss = st.session_state
-    if ss.roulette:
+    row = next((m for m in ss.members if m["eligible"] and m["prize"] is None), None)
+    if row is None:
         return
     idx = random.randrange(len(ROULETTE_PRIZES))
     seg = 360 / len(ROULETTE_PRIZES)
@@ -195,11 +206,12 @@ def spin_roulette():
     angle = 360 * 5 - (idx * seg + random.uniform(-seg * 0.3, seg * 0.3))
     ss.roulette = {"idx": idx, "angle": round(angle, 1), "animate": True}
     prize = ROULETTE_PRIZES[idx]
+    row["prize"] = prize["short"]
+    ss.just_spun = True
     if prize["kind"] == "discount":
-        ss.roulette_percent = prize["percent"]
-    else:
-        item = MENU_BY_ID[prize["item_id"]]
-        cart_add(item, "룰렛 서비스", 0, 1)
+        ss.roulette_percent = max(ss.roulette_percent, prize["percent"])
+    elif prize["item_id"] in MENU_BY_ID:
+        cart_add(MENU_BY_ID[prize["item_id"]], "룰렛 서비스", 0, 1)
 
 
 CONFETTI = [(18, 18, 38, 12, "#f1566f", -35), (3, 40, 14, 14, "#5b8def", 20), (84, 6, 34, 11, "#37b36b", 30),
@@ -240,8 +252,16 @@ def render_roulette():
                 f'{conf}<div class="rw-star" style="left:-8%;top:10%">⭐</div><div class="rw-star" style="right:-9%;top:28%">⭐</div>'
                 '<div class="rw-bubble l">오늘의<br>작은 행운!<br>어떤 선물이<br>기다리고 있을까요?</div>'
                 '<div class="rw-bubble r">맛있는 식사와<br>특별한 혜택을<br>함께! <span class="heart">♥</span></div></div>')
+        left = spins_left()
         with st.container(key="rw_start"):
-            st.button("START", type="primary", key="roulette_btn", disabled=bool(spun), on_click=spin_roulette)
+            clicked = st.button("START", type="primary", key="roulette_btn", on_click=spin_roulette if left else None)
+    hint = (f"🎟️ 룰렛 기회 {left}회 남았어요 — START를 눌러 보세요!" if left
+            else "한 번 더 돌리려면 다른 회원이 로그인해 주세요." if st.session_state.members
+            else "START를 누르면 로그인 후 룰렛을 돌릴 수 있어요.")
+    st.html(f'<div class="rw-hint">{hint}</div>')
+    just_spun = st.session_state.pop("just_spun", False)  # 이번 클릭이 룰렛을 돌린 것이면 팝업을 띄우지 않는다
+    if clicked and not left and not just_spun:  # 기회가 없으면 (처음이든 이미 돌렸든) 로그인 팝업
+        login_dialog("again" if st.session_state.members else "spin")
     if spun:
         prize = prizes[spun["idx"]]
         note = "다음 주문에 자동 적용돼요" if prize["kind"] == "discount" else "장바구니에 담아 두었어요"
@@ -258,23 +278,45 @@ def new_login():
     st.session_state.login = {**qr, "created": time.time()} if qr else None
 
 
+def ensure_login():
+    login = st.session_state.login
+    if not login or time.time() - login["created"] > login["expires_in"]:
+        new_login()
+
+
 def finish_login(event):
+    """로그인 완료: 이 태블릿의 회원 기록에 누적하고, 처음 로그인한 회원에게만 룰렛 기회를 준다."""
     ss = st.session_state
-    ss.member, ss.access_token, ss.login = event["member"], event["access_token"], None
-    if ss.roulette and not ss.bonus_spin_used:  # 가입하면 룰렛 한 번 더
-        ss.roulette, ss.bonus_spin_used = None, True
+    m = event["member"]
+    ss.member, ss.access_token, ss.login = m, event["access_token"], None
+    first = m["id"] not in ss.granted_ids
+    if first:
+        ss.granted_ids.append(m["id"])
+    ss.members.append({"id": m["id"], "nickname": m["nickname"], "at": datetime.now(KST).strftime("%H:%M"),
+                       "eligible": first, "prize": None})
+    ss.profile_saved = False
+
+
+def poll_login_once():
+    """진행 중인 QR 로그인이 있으면 서버에 한 번 물어보고, 완료됐으면 반영한다."""
+    ss = st.session_state
+    if not ss.login:
+        return None
+    event = server.poll_login(ss.login["secret"])
+    if event and event.get("event") == "logged_in":
+        finish_login(event)
+    return event
 
 
 @st.fragment(run_every=2)
 def login_watch():
-    """태블릿 쪽에서 로그인 진행 상황을 2초마다 확인한다 (서버는 WebSocket 도 지원)."""
+    """로그인 팝업이 열려 있는 동안 2초마다 확인한다 (서버는 WebSocket 도 지원)."""
     ss = st.session_state
     login = ss.login
     if not login:
         return
-    event = server.poll_login(login["secret"])
-    if event and event.get("event") == "logged_in":
-        finish_login(event)
+    event = poll_login_once()
+    if not ss.login:  # 로그인 완료 → 전체 화면을 다시 그려 팝업을 닫는다
         st.rerun()
     status = (event or {}).get("status", "waiting")
     if time.time() - login["created"] > login["expires_in"]:
@@ -288,10 +330,31 @@ def login_watch():
         st.caption("휴대폰 카메라로 QR을 스캔해 주세요. (3분 안에)")
 
 
+LOGIN_REASON = {"spin": "룰렛을 돌리려면 로그인해 주세요",
+                "again": "이미 돌리셨어요! 한 번 더 돌리려면 다른 회원이 로그인해 주세요",
+                "more": "다른 회원도 로그인할 수 있어요"}
+
+
+@st.dialog("📱 휴대폰으로 로그인")
+def login_dialog(reason="spin"):
+    ss = st.session_state
+    if server.is_online():
+        ensure_login()  # 서버가 안 닿으면 여기서 오프라인으로 표시된다
+    if not ss.login:
+        st.error("서버에 연결할 수 없어 로그인할 수 없어요. 직원에게 문의해 주세요." if not server.is_online()
+                 else "로그인 QR을 만들지 못했어요. 잠시 후 다시 시도해 주세요.")
+        return
+    st.html(f'<div class="login-pop"><b>{LOGIN_REASON[reason]}</b>'
+            '<small>휴대폰 카메라로 QR을 스캔하고 카카오로 로그인하면 룰렛을 한 번 돌릴 수 있어요. (회원당 1회)<br>'
+            '로그인하지 않아도 주문은 가능해요.</small></div>')
+    st.image(qr_image(ss.login["qr_url"]), width=220)
+    login_watch()
+
+
 def render_profile_form():
     """카카오로 받지 못하는 정보(휴대폰 번호 등)와 마케팅 수신 동의를 직접 입력받는다. 모두 선택."""
     ss = st.session_state
-    with st.expander("📱 회원 정보 입력 (선택)", expanded=not ss.get("profile_saved")):
+    with st.expander(f"📱 {escape(ss.member['nickname'])}님 회원 정보 입력 (선택)", expanded=not ss.get("profile_saved")):
         with st.form("profile_form"):
             phone = st.text_input("휴대폰 번호", placeholder="010-1234-5678")
             c1, c2 = st.columns(2)
@@ -310,37 +373,49 @@ def render_profile_form():
             st.toast("수신거부 처리했어요." if server.opt_out(ss.access_token) else "처리하지 못했어요.", icon="🔕")
 
 
+def render_members_log():
+    """이 태블릿에서 로그인한 회원을 로그인할 때마다 아래에 누적해서 보여준다."""
+    members = st.session_state.members
+    if not members:
+        return
+    rows = ""
+    for i, m in enumerate(members, 1):
+        status = (f"🎁 {escape(m['prize'])}" if m["prize"] else "🎟️ 룰렛 대기 중" if m["eligible"]
+                  else "룰렛은 이미 참여했어요")
+        rows += (f'<li><span class="n">{i}</span><b>{escape(m["nickname"])}님</b>'
+                 f'<span class="t">{m["at"]} 로그인</span><em>{status}</em></li>')
+    st.html(f'<div class="mlog"><div class="mlog-title">로그인한 회원 <span>{len(members)}</span></div><ul>{rows}</ul></div>')
+
+
 def render_splash():
-    render_roulette()
     ss = st.session_state
+    poll_login_once()  # 팝업을 닫았거나 다시 그려진 뒤에도 완료된 로그인은 반영
+    render_roulette()
     member = ss.member
-    if not member and not ss.login and server.is_online():
-        new_login()
     with st.container(horizontal=True, key="splash_bottom"):
-        if member:
-            with st.container(horizontal=True, key="qr_card"):
+        with st.container(horizontal=True, key="qr_card"):
+            if member:
                 st.html(f'<div class="qr-text"><div class="a">{escape(member["nickname"])}님</div>'
-                        '<div class="b">로그인 완료!</div><div class="c">룰렛 한 번 더 돌릴 수 있어요.</div></div>')
-        elif ss.login:
-            with st.container(horizontal=True, key="qr_card"):
-                st.image(qr_image(ss.login["qr_url"]), width=96)
-                st.html('<div class="qr-text"><div class="a">회원가입하고</div><div class="b">룰렛 한번 더!</div>'
-                        '<div class="c">QR코드를 스캔하여<br>간단하게 가입하고<br>추가 기회를 받아보세요!</div></div>')
+                        '<div class="b">회원 로그인 완료!</div>'
+                        f'<div class="c">남은 룰렛 기회 {spins_left()}회</div></div>')
+            else:
+                st.html('<div class="qr-text"><div class="a">회원이신가요?</div><div class="b">로그인하고 룰렛 돌리기</div>'
+                        '<div class="c">로그인하지 않아도<br>주문은 할 수 있어요.</div></div>')
+            if st.button("➕ 다른 회원 로그인" if member else "📱 로그인", key="login_open"):
+                login_dialog("more")
         with st.container(key="start_cta"):
-            st.button("🍴 메뉴선택  ›", type="primary", width="stretch", key="start_btn", on_click=go, args=("menu",))
+            st.button("🍴 회원 주문  ›" if member else "🍴 비회원 주문  ›", type="primary", width="stretch",
+                      key="start_btn", on_click=go, args=("menu",))
     if member:
         render_profile_form()
-    elif ss.login:
-        login_watch()
-    else:
-        st.caption("서버에 연결할 수 없어 QR 로그인을 사용할 수 없어요. (주문은 그대로 가능해요)")
+    render_members_log()
 
 
 def render_header():
     with st.container(key="header"):
         c_brand, c_table, c_actions = st.columns([3.5, 1.2, 4], vertical_alignment="center")
         c_brand.html(f'<div class="brand"><div class="logo">🍺</div><div><div class="name">{STORE["name"]}</div>'
-                     f'<div class="sub">{STORE["branch"]}{f" · {escape(st.session_state.member["nickname"])}님" if st.session_state.member else ""}</div></div></div>')
+                     f'<div class="sub">{STORE["branch"]}{f" · {escape(st.session_state.member["nickname"])}님 (회원)" if st.session_state.member else " · 비회원"}</div></div></div>')
         c_table.html(f'<div class="table-chip">TABLE <b>{st.session_state.table}</b></div>')
         with c_actions.container(horizontal=True, key="header_actions"):
             if st.button("🔔 직원호출", width="stretch"):

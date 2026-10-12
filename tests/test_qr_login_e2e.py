@@ -40,54 +40,100 @@ def phone_login(server, qr_url: str, nickname: str):
     assert server.get("/api/auth/kakao/callback", params={"state": state, "code": f"mock-{nickname}"}).status_code == 200
 
 
-def test_qr_scan_changes_tablet_screen_and_profile_saves(server):
+def ss(app):
+    return app.session_state
+
+
+def test_guest_sees_guest_order_button_and_roulette_asks_for_login(server):
     app = AppTest.from_file(APP, default_timeout=30).run()
-    login = app.session_state["login"]
+    assert app.button(key="start_btn").label == "🍴 비회원 주문  ›"
+    assert not ss(app)["members"] and any("로그인 후 룰렛" in h.value for h in app.get("html"))
+    app.button(key="roulette_btn").click().run()  # 로그인 안 한 상태로 START → 로그인 팝업
+    assert ss(app)["roulette"] is None
+    login = ss(app)["login"]
     assert login and login["qr_url"].startswith("http://t/api/auth/kakao/start?token=")
-    assert not app.session_state["member"] and any("스캔해 주세요" in c.value for c in app.caption)
-
-    phone_login(server, login["qr_url"], "홍대손님")  # 휴대폰에서 스캔 + 로그인
-    app.run()  # 태블릿의 폴링이 로그인 완료를 감지
-    assert app.session_state["member"]["nickname"] == "홍대손님"
-    assert app.session_state["access_token"] and app.session_state["login"] is None
-    assert any("로그인 완료" in m.value for m in app.markdown) or any("로그인 완료" in str(e.value) for e in app.get("html"))
-
-    app.text_input[0].set_value("010-1234-5678")
-    app.checkbox[0].check()
-    next(b for b in app.get("button") if b.proto.label == "저장").click().run()
-    me = server.get("/api/members/me", headers={"Authorization": f"Bearer {app.session_state['access_token']}"}).json()
-    assert me["phone"] == "010-1234-5678" and me["marketing_consent"] is True
     assert not app.exception
 
 
-def test_used_qr_is_rejected_and_new_qr_issued_on_refresh(server):
+def test_login_then_spin_then_second_spin_needs_another_login(server):
     app = AppTest.from_file(APP, default_timeout=30).run()
-    first = app.session_state["login"]
+    app.button(key="roulette_btn").click().run()
+    phone_login(server, ss(app)["login"]["qr_url"], "가")
+    app.run()  # 팝업이 닫힌 뒤에도 완료된 로그인이 반영된다
+    assert ss(app)["member"]["nickname"] == "가" and ss(app)["login"] is None
+    assert app.button(key="start_btn").label == "🍴 회원 주문  ›"
+    assert len(ss(app)["members"]) == 1 and any("룰렛 기회 1회" in h.value for h in app.get("html"))
+
+    app.button(key="roulette_btn").click().run()  # 로그인 O → 룰렛이 돈다
+    assert ss(app)["roulette"] and ss(app)["members"][0]["prize"]
+    assert ss(app)["login"] is None and not [d for d in app.get("dialog")]  # 돌린 직후에는 로그인 팝업이 없다
+    first_result = ss(app)["roulette"]["idx"]
+
+    app.button(key="roulette_btn").click().run()  # 이미 돌렸는데 또 돌리려 하면 → 추가 로그인 팝업
+    assert ss(app)["roulette"]["idx"] == first_result and ss(app)["login"]
+    phone_login(server, ss(app)["login"]["qr_url"], "나")
+    app.run()
+    assert [m["nickname"] for m in ss(app)["members"]] == ["가", "나"] and ss(app)["members"][1]["prize"] is None
+    app.button(key="roulette_btn").click().run()
+    assert ss(app)["members"][1]["prize"] and ss(app)["login"] is None and not app.exception
+    # 하단에 로그인한 회원이 누적된다
+    log = next(h.value for h in app.get("html") if "mlog" in h.value)
+    assert "가님" in log and "나님" in log and "로그인한 회원 <span>2</span>" in log
+
+
+def test_same_member_logging_in_again_adds_row_but_no_extra_spin(server):
+    app = AppTest.from_file(APP, default_timeout=30).run()
+    for _ in range(2):
+        app.button(key="login_open").click().run()
+        phone_login(server, ss(app)["login"]["qr_url"], "같은사람")
+        app.run()
+    rows = ss(app)["members"]
+    assert len(rows) == 2 and rows[0]["eligible"] is True and rows[1]["eligible"] is False
+    app.button(key="roulette_btn").click().run()
+    app.button(key="roulette_btn").click().run()  # 두 번째 START → 기회 없음 → 팝업
+    assert rows[0]["prize"] and rows[1]["prize"] is None and ss(app)["login"]
+    log = next(h.value for h in app.get("html") if "mlog" in h.value)
+    assert "룰렛은 이미 참여했어요" in log
+
+
+def test_profile_form_after_login_saves(server):
+    app = AppTest.from_file(APP, default_timeout=30).run()
+    app.button(key="login_open").click().run()
+    phone_login(server, ss(app)["login"]["qr_url"], "홍대손님")
+    app.run()
+    app.text_input[0].set_value("010-1234-5678")
+    app.checkbox[0].check()
+    next(b for b in app.get("button") if b.proto.label == "저장").click().run()
+    me = server.get("/api/members/me", headers={"Authorization": f"Bearer {ss(app)['access_token']}"}).json()
+    assert me["phone"] == "010-1234-5678" and me["marketing_consent"] is True and not app.exception
+
+
+def test_used_qr_is_rejected_and_expired_qr_can_be_refreshed(server):
+    app = AppTest.from_file(APP, default_timeout=30).run()
+    app.button(key="login_open").click().run()
+    first = ss(app)["login"]
     phone_login(server, first["qr_url"], "가")
     path = urlparse(first["qr_url"])
     assert server.get(f"{path.path}?{path.query}", follow_redirects=False).status_code == 410  # 재사용 불가
     app.run()
-    assert app.session_state["member"]["nickname"] == "가"
-
-
-def test_expired_qr_can_be_refreshed(server):
-    app = AppTest.from_file(APP, default_timeout=30).run()
-    old = app.session_state["login"]["token"]
-    app.session_state["login"]["created"] -= 10_000  # 만료시키기
+    app.button(key="login_open").click().run()
+    old = ss(app)["login"]["token"]
+    ss(app)["login"]["created"] -= 10_000  # 만료시키기
     app.run()
-    next(b for b in app.get("button") if b.proto.label == "QR 새로고침").click().run()
-    assert app.session_state["login"]["token"] != old
+    app.button(key="login_open").click().run()  # 만료된 QR 은 열 때 새로 발급
+    assert ss(app)["login"]["token"] != old
 
 
-def test_page_works_without_server_and_table_comes_from_url():
+def test_without_server_roulette_explains_and_guest_order_still_works():
     api.set_client(__import__("httpx").Client(base_url="http://127.0.0.1:9", timeout=1))
     try:
         app = AppTest.from_file(APP, default_timeout=30)
         app.query_params["table"] = "7"
         app.run()
-        assert not app.exception and app.session_state["login"] is None and app.session_state["table"] == 7
-        assert any("QR 로그인을 사용할 수 없어요" in c.value for c in app.caption)
-        app.button(key="start_btn").click().run()  # 서버 없이도 주문 화면 진입
+        assert not app.exception and ss(app)["table"] == 7
+        app.button(key="roulette_btn").click().run()
+        assert any("서버에 연결할 수 없어" in e.value for e in app.error) and not ss(app)["members"]
+        app.button(key="start_btn").click().run()  # 비회원 주문은 서버 없이도 가능
         assert not app.exception
     finally:
         api.set_client(None)

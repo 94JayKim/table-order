@@ -145,6 +145,10 @@ def render_category_panel(repo, cats):
                     name = st.text_input("이름", value=selected["name"])
                     icon = st.text_input("아이콘 (이모지)", value=selected["icon"], max_chars=4)
                     color = st.selectbox("색상", ["(그대로)"] + list(COLOR_PRESETS))
+                    f_undo = st.form_submit_button("↩ 되돌리기", width="stretch",
+                                                   help="입력한 값을 지우고 저장된 값으로 돌립니다")
+                    if f_undo:
+                        st.rerun()
                     if st.form_submit_button("수정 저장", width="stretch"):
                         try:
                             repo.update_category(selected["id"], name, icon, None if color == "(그대로)" else color)
@@ -224,8 +228,16 @@ def render_menu_panel(repo, cats):
             "세트 가능": st.column_config.CheckboxColumn(),
         })
     st.caption("표에서 직접 고치거나 행을 추가·삭제한 뒤 저장하세요.")
-    if st.button("변경 저장", type="primary", key="menu_save"):
-        new = edited.reset_index(drop=True)
+    new = edited.reset_index(drop=True)
+    dirty = not new.equals(old)
+    c_save, c_undo, _ = st.columns([1, 1.3, 5])
+    undo = c_undo.button("↩ 되돌리기", key="menu_undo", width="stretch", disabled=not dirty,
+                         help="저장하기 전의 수정·추가·삭제를 모두 취소하고 저장된 상태로 돌립니다")
+    if undo:
+        ss["menu_editor_v"] += 1  # 편집 표를 새로 만들어 저장된 값으로 되돌린다
+        st.toast("저장하지 않은 변경을 되돌렸어요.", icon="↩️")
+        st.rerun()
+    if c_save.button("변경 저장", type="primary", key="menu_save", width="stretch"):
         new["카테고리"] = category["name"]  # 표에서 새로 추가한 행도 이 카테고리에 들어간다
         try:
             r = repo.save_menus(new, old)
@@ -249,20 +261,74 @@ def page_menu(repo):
         render_menu_panel(repo, cats)
 
 
+WEIGHT_STEP = 5
+
+
+def weight_change(key, delta):
+    ss[key] = min(100, max(0, ss[key] + delta))
+
+
+def weight_thumb(menu_row, visual):
+    """주문 화면처럼 메뉴 사진(없으면 이모지+카테고리 색)을 보여주는 썸네일."""
+    c1, c2 = visual["colors"]
+    sold = "" if menu_row["판매 여부"] else '<div class="soldout">품절</div>'
+    if visual["image_url"]:
+        inner = f'<img src="{escape(visual["image_url"], quote=True)}" alt="{escape(menu_row["메뉴명"], quote=True)}" loading="lazy">'
+    else:
+        inner = visual["emoji"]
+    return f'<div class="wthumb" style="background:linear-gradient(135deg,{c1},{c2})">{inner}{sold}</div>'
+
+
 def page_weights(repo):
-    page_head("추천 가중치", "0~100. 높을수록 AI 추천 조합에 우선 반영됩니다. 50이 기본값입니다.")
+    page_head("추천 가중치", "메뉴 사진 아래 + / − 로 조절하세요. 0~100, 높을수록 AI 추천 조합에 우선 반영돼요 (기본 50).")
     menu = repo.menus()
+    visuals = repo.menu_visuals()
     cat = st.selectbox("카테고리", ["전체"] + [c["name"] for c in repo.categories()])
     view = menu if cat == "전체" else menu[menu["카테고리"] == cat]
+    # 가중치 상태: 다른 화면(메뉴 관리 등)에서 저장값이 바뀌었으면 그 값으로 다시 시작한다
+    for _, row in menu.iterrows():
+        key, base = f"w_{row['id']}", f"wbase_{row['id']}"
+        if key not in ss or ss.get(base) != int(row["추천 가중치"]):
+            ss[key], ss[base] = int(row["추천 가중치"]), int(row["추천 가중치"])
     new = menu.copy()
-    for idx, row in view.iterrows():
-        c1, c2 = st.columns([2, 3])
-        c1.write(f"**{row['메뉴명']}**" + ("" if row["판매 여부"] else " (품절)"))
-        new.at[idx, "추천 가중치"] = c2.slider(row["메뉴명"], 0, 100, int(row["추천 가중치"]), 5,
-                                           key=f"w_{row['id']}", label_visibility="collapsed")
-    if st.button("가중치 저장", type="primary"):
+    for idx, row in menu.iterrows():
+        new.at[idx, "추천 가중치"] = ss[f"w_{row['id']}"]
+    dirty = not new["추천 가중치"].equals(menu["추천 가중치"])
+
+    with st.container(horizontal=True, key="wgrid"):
+        for _, row in view.iterrows():
+            key, saved = f"w_{row['id']}", int(row["추천 가중치"])
+            with st.container(key=f"wcard_{row['id']}"):
+                st.html(weight_thumb(row, visuals.get(row["id"], {"emoji": "🍽️", "image_url": "", "colors": ["#a29bfe", "#6c5ce7"]}))
+                        + f'<div class="wname">{escape(row["메뉴명"])}</div>'
+                        f'<div class="wprice">{row["가격"]:,}원</div>')
+                c1, c2, c3 = st.columns([1, 1.3, 1], vertical_alignment="center", wrap=False)
+                c1.button("−", key=f"wdec_{row['id']}", width="stretch", on_click=weight_change, args=(key, -WEIGHT_STEP),
+                          disabled=ss[key] <= 0, help=f"{row['메뉴명']} 가중치 낮추기")
+                changed = " changed" if ss[key] != saved else ""
+                c2.html(f'<div class="wval{changed}"><b>{ss[key]}</b><small>저장값 {saved}</small></div>')
+                c3.button("+", key=f"winc_{row['id']}", width="stretch", on_click=weight_change, args=(key, WEIGHT_STEP),
+                          disabled=ss[key] >= 100, help=f"{row['메뉴명']} 가중치 높이기")
+
+    def undo_weights():
+        for key in [k for k in ss if str(k).startswith(("w_", "wbase_"))]:
+            del ss[key]  # 저장된 값으로 다시 시작한다
+        st.toast("저장하지 않은 변경을 되돌렸어요.", icon="↩️")
+
+    sec_title("변경 사항", f"{int((new['추천 가중치'] != menu['추천 가중치']).sum())}개 메뉴 수정됨")
+    c_save, c_undo, _ = st.columns([1.2, 1.3, 5])
+    c_undo.button("↩ 되돌리기", key="weights_undo", width="stretch", disabled=not dirty, on_click=undo_weights,
+                  help="저장하기 전의 가중치 변경을 모두 취소하고 저장된 값으로 돌립니다")
+    if c_save.button("가중치 저장", type="primary", width="stretch"):
         r = repo.save_menus(new, menu)
         st.toast(f"저장했습니다. (수정 {r['saved']}개)", icon="✅")
+        st.rerun()  # 저장된 값을 기준으로 다시 그린다 (되돌리기 버튼 상태 갱신)
+
+
+def reset_rule():
+    ss["grade_rule"] = dict(DEFAULT_RULE)
+    for key in ("rule_repeat", "rule_regular", "rule_dormant"):
+        ss.pop(key, None)
 
 
 def page_customers(repo):
@@ -270,9 +336,11 @@ def page_customers(repo):
     rule = ss["grade_rule"]
     with st.expander("등급 분류 기준 (임시 — 추가 정의 필요)", expanded=True):
         c1, c2, c3 = st.columns(3)
-        rule["repeat"] = c1.number_input("재방문: 방문 횟수 ≥", 2, 50, rule["repeat"])
-        rule["regular"] = c2.number_input("단골: 방문 횟수 ≥", rule["repeat"] + 1, 100, max(rule["regular"], rule["repeat"] + 1))
-        rule["dormant"] = c3.number_input("휴면: 마지막 방문 후 N일 이상", 7, 365, rule["dormant"])
+        rule["repeat"] = c1.number_input("재방문: 방문 횟수 ≥", 2, 50, rule["repeat"], key="rule_repeat")
+        rule["regular"] = c2.number_input("단골: 방문 횟수 ≥", rule["repeat"] + 1, 100, max(rule["regular"], rule["repeat"] + 1), key="rule_regular")
+        rule["dormant"] = c3.number_input("휴면: 마지막 방문 후 N일 이상", 7, 365, rule["dormant"], key="rule_dormant")
+        st.button("↩ 기본값으로 되돌리기", key="rule_reset", disabled=rule == DEFAULT_RULE, on_click=reset_rule,
+                  help="등급 분류 기준을 처음 값으로 돌립니다")
         st.caption("그 외(방문 1회)는 신규 고객입니다. 이 값은 화면에서 미리 보는 용도이고 서버에는 저장되지 않아요.")
     cust = repo.members(rule)
     kpi_row(*[kpi(f"{g} 고객", int((cust["등급"] == g).sum()), "명") for g in GRADES])

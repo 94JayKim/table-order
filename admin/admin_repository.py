@@ -140,6 +140,13 @@ class AdminRepository:
                 for m in payload["menus"]]
         return pd.DataFrame(rows, columns=MENU_COLUMNS)
 
+    def menu_visuals(self) -> dict[str, dict]:
+        """메뉴 id → 카드 썸네일에 쓸 {emoji, image_url, colors} (사진이 없으면 이모지+카테고리 색)."""
+        payload = self.backend.menus()
+        colors = {c["id"]: c.get("colors") or COLOR_PRESETS["보라"] for c in self.backend.categories_full()}
+        return {m["id"]: {"emoji": m.get("emoji") or "🍽️", "image_url": m.get("image_url") or "",
+                          "colors": colors.get(m["cat"], COLOR_PRESETS["보라"])} for m in payload["menus"]}
+
     # ---- 카테고리 CRUD (왼쪽 패널) ----
     def category_list(self) -> list[dict]:
         """메뉴를 넣을 수 있는 카테고리(가상 카테고리 제외): id, icon, name, colors, menu_count."""

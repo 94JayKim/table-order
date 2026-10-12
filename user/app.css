@@ -42,6 +42,7 @@ button:focus-visible { outline: 3px solid #ffcf54 !important; outline-offset: 3p
 [class*="st-key-card_"] > [data-testid="stElementContainer"]:last-child { margin-top: auto; }
 .thumb { height: 132px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 62px; position: relative; overflow: hidden; }
 .thumb.big { height: 240px; font-size: 110px; }
+.thumb > .menu-photo { display: block; width: 100%; height: 100%; object-fit: cover; }
 .thumb .badges { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; flex-wrap: wrap; gap: 4px; }
 .badge { font-size: 10px; font-weight: 800; padding: 3px 6px; border-radius: 6px; color: #fff; line-height: 1.4; }
 .badge.BEST { background: #ce2938; } .badge.NEW { background: #187a45; } .badge.spicy { background: #bc4900; }
@@ -88,6 +89,7 @@ button:focus-visible { outline: 3px solid #ffcf54 !important; outline-offset: 3p
 .combo-item > span:nth-child(2) { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .combo-item small { display: block; color: #aaa8b4; font-size: 10px; }
 .combo-emoji { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 28px; height: 28px; border-radius: 7px; background: #302b36; font-size: 18px; }
+.combo-photo { display: block; flex-shrink: 0; width: 36px; height: 36px; border-radius: 7px; object-fit: cover; }
 .combo-item b { color: #d5c9e3; white-space: nowrap; }
 .combo-reason { padding: 8px 10px; border-radius: 8px; background: #29232f; }
 .combo-reason strong { font-size: 12px; color: #d7baff; }

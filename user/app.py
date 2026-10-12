@@ -15,6 +15,7 @@ import user_repository as repository
 from ai_quiz_data import answer_label, current_weather, time_slot
 
 from recommendations import combo_cart_line, recommend_combos
+from menu_images import menu_image_html
 
 KST = timezone(timedelta(hours=9))
 
@@ -141,7 +142,7 @@ def thumb_html(item, qty_in_cart=0, big=False):
     extra = f'<div class="incart">{qty_in_cart}개 담김</div>' if qty_in_cart else ""
     sold = '<div class="soldout">품절</div>' if item["soldout"] else ""
     return (f'<div class="thumb{size}" style="background:linear-gradient(135deg,{c1},{c2})">'
-            f'{item["emoji"]}<div class="badges">{badges}</div>{extra}{sold}</div>')
+            f'{menu_image_html(item)}<div class="badges">{badges}</div>{extra}{sold}</div>')
 
 
 @st.dialog("주문 확인", width="medium")
@@ -514,7 +515,7 @@ def render_combo_cards(combos):
     for rank, combo in enumerate(combos, 1):
         with st.container(key=f"ai_combo_{rank}"):
             contents = "".join(
-                f'<div class="combo-item"><span class="combo-emoji">{c["emoji"]}</span>'
+                f'<div class="combo-item">{menu_image_html(MENU_BY_ID.get(c["id"], c), "combo-photo", "combo-emoji")}'
                 f'<span>{escape(c["name"])}<small>{escape(c["opt"])}</small></span><b>× {c["qty"]}</b></div>'
                 for c in combo["components"])
             st.html(f'<div class="combo-heading"><span class="combo-rank rank-{rank}">{rank}위</span>'

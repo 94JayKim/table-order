@@ -36,12 +36,16 @@ class Settings(BaseSettings):
     login_ttl_seconds: int = 180
     jwt_expire_minutes: int = 720
 
-    # 문자 발송 / 네이버 클라우드 SENS (docs/PRODUCTION_PLAN.md 2장)
+    # 문자 발송 / 솔라피(기본) · 네이버 클라우드 SENS (docs/PRODUCTION_PLAN.md 2장)
+    sms_provider: str = "solapi"  # solapi | sens
+    solapi_api_key: str = ""
+    solapi_api_secret: str = ""
+    solapi_sender_number: str = ""  # 솔라피에 등록된 발신번호
     sens_service_id: str = ""
     sens_access_key: str = ""
     sens_secret_key: str = ""
     sens_sender_number: str = ""  # SENS에 등록·승인된 발신번호
-    sens_opt_out_number: str = ""  # 광고 문자 하단의 무료수신거부 번호
+    sens_opt_out_number: str = ""  # (공급자 공통) 광고 문자 하단의 무료수신거부 번호
     sms_monthly_limit: int = 50
     lms_monthly_limit: int = 10
     sms_dry_run: bool = True  # True면 SENS를 호출하지 않고 로그만 남긴다

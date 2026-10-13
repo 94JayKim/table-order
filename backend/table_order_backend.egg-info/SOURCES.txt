@@ -13,6 +13,7 @@ app/services/grades.py
 app/services/kakao.py
 app/services/sens.py
 app/services/stats.py
+app/services/supabase_auth.py
 app/services/tokens.py
 app/stores/__init__.py
 app/stores/content.py

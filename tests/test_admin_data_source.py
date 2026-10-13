@@ -105,6 +105,19 @@ def test_repository_tables_have_identical_columns_for_dummy_and_server(server):
     assert row["닉네임"] == "계약" and row["테이블"] == 3 and "통닭 x1" in row["주문 내역"]
 
 
+def test_dummy_schedule_and_cancel_restores_usage():
+    from datetime import datetime, timedelta
+    repo = ar.AdminRepository(DummyBackend())
+    base = repo.sms_usage()["used"]["SMS"]
+    when = datetime.now() + timedelta(days=1)
+    r = repo.sms_send(["휴면"], "예약 문자", when)
+    assert r["scheduled_at"] and repo.sms_usage()["used"]["SMS"] == base + r["count"]
+    log = repo.sms_logs()[0]
+    assert log["status"] == "scheduled"
+    assert repo.sms_cancel(log["id"])["status"] == "canceled" and repo.sms_usage()["used"]["SMS"] == base
+    assert not repo.sms_preview(["휴면"], "x", datetime.now())["ok"]  # 10분 이내 예약 거절
+
+
 def test_dummy_marketing_works_like_the_server_without_sending_anything():
     repo = ar.AdminRepository(DummyBackend())
     usage = repo.sms_usage()

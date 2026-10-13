@@ -40,6 +40,7 @@ class MenuIn(BaseModel):
 class SmsIn(BaseModel):
     grades: list[str] = Field(min_length=1)
     body: str
+    scheduled_at: datetime | None = None  # 예약 발송 시각 (시간대 없으면 KST)
 
 
 def _rule(s: Settings, repeat=None, regular=None, dormant=None) -> dict:
@@ -133,16 +134,27 @@ async def sms_usage(request: Request):
 @router.post("/marketing/sms/preview")
 async def sms_preview(body: SmsIn, request: Request):
     _check_grades(body.grades)
-    return _sms(request).preview(body.grades, body.body)
+    return _sms(request).preview(body.grades, body.body, body.scheduled_at)
 
 
 @router.post("/marketing/sms/send")
 def sms_send(body: SmsIn, request: Request):
     _check_grades(body.grades)
     try:
-        return _sms(request).send(body.grades, body.body)
+        return _sms(request).send(body.grades, body.body, body.scheduled_at)
     except SmsRejected as e:
         raise HTTPException(409, {"problems": e.problems})
+
+
+@router.post("/marketing/sms/logs/{log_id}/cancel")
+def sms_cancel(log_id: int, request: Request):
+    try:
+        done = _sms(request).cancel(log_id)
+    except SmsRejected as e:
+        raise HTTPException(409, {"problems": e.problems})
+    if done is None:
+        raise HTTPException(404, "없는 발송 기록입니다.")
+    return done
 
 
 @router.get("/marketing/sms/logs")

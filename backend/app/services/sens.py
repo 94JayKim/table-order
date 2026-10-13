@@ -9,7 +9,7 @@ import hashlib
 import hmac
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from datetime import time as dtime
 
 import httpx
@@ -20,6 +20,7 @@ from app.stores.members import MemberStore
 from app.stores.sms_logs import SmsLogStore
 
 SMS_LIMIT_BYTES = 90
+MIN_LEAD = timedelta(minutes=10)  # 예약은 지금부터 최소 10분 뒤
 NIGHT_START, NIGHT_END = dtime(21, 0), dtime(8, 0)  # 광고성 문자 야간 발송 제한
 CHUNK = 100  # SENS 1회 호출당 수신자 수 상한 (콘솔 문서로 현재 값 재확인 필요)
 BASE = "https://sens.apigw.ntruss.com"
@@ -81,16 +82,17 @@ class SmsService:
                 if m["phone"] and m["marketing_consent"] and not m["opted_out"]
                 and grade_of(m, today, **rule) in grades]
 
-    def usage(self) -> dict:
-        month = self.clock().strftime("%Y-%m")
+    def usage(self, month: str | None = None) -> dict:
+        month = month or self.clock().strftime("%Y-%m")
         used = self.logs.usage(month)
         return {"month": month, "used": used,
                 "limit": {"SMS": self.s.sms_monthly_limit, "LMS": self.s.lms_monthly_limit}}
 
-    def preview(self, grades: list[str], body: str) -> dict:
+    def preview(self, grades: list[str], body: str, scheduled_at: datetime | None = None) -> dict:
         text = self.build(body)
         kind = msg_type(text)
-        usage = self.usage()
+        when = self._kst(scheduled_at) if scheduled_at else None
+        usage = self.usage(when.strftime("%Y-%m") if when else None)
         remaining = usage["limit"][kind] - usage["used"][kind]
         targets = self.targets(grades)
         problems = []
@@ -98,7 +100,12 @@ class SmsService:
             problems.append("본문이 비어 있습니다.")
         if not targets:
             problems.append("발송 대상이 없습니다. (휴대폰 번호 입력 + 수신 동의 + 수신거부 아님)")
-        if is_night(self.clock().time()):
+        if when:
+            if when < self.clock() + MIN_LEAD:
+                problems.append("예약 시각은 지금부터 10분 이후여야 합니다.")
+            if not self.s.sms_dry_run and self.s.sms_provider == "sens":
+                problems.append("예약 발송은 솔라피에서만 지원합니다. (SMS_PROVIDER=solapi)")
+        if is_night((when or self.clock()).timetz().replace(tzinfo=None)):
             problems.append("야간(21시~08시)에는 광고성 문자를 보낼 수 없습니다.")
         if len(targets) > remaining:
             problems.append(f"이번 달 {kind} 무료 잔여 {max(remaining, 0)}건보다 대상({len(targets)}명)이 많습니다.")
@@ -108,32 +115,66 @@ class SmsService:
             else:
                 problems.append("솔라피 설정(API 키·시크릿·발신번호·수신거부 번호)이 비어 있습니다.")
         return {"type": kind, "bytes": msg_bytes(text), "content": text, "targets": len(targets),
-                "remaining": remaining, "problems": problems, "ok": not problems, "dry_run": self.s.sms_dry_run}
+                "remaining": remaining, "problems": problems, "ok": not problems, "dry_run": self.s.sms_dry_run,
+                "scheduled_at": when.isoformat() if when else None}
 
-    def send(self, grades: list[str], body: str) -> dict:
-        plan = self.preview(grades, body)
+    def _kst(self, when: datetime) -> datetime:
+        return (when.replace(tzinfo=KST) if when.tzinfo is None else when).astimezone(KST)
+
+    def send(self, grades: list[str], body: str, scheduled_at: datetime | None = None) -> dict:
+        plan = self.preview(grades, body, scheduled_at)
         if not plan["ok"]:
             raise SmsRejected(plan["problems"])
         targets = self.targets(grades)
-        month, kind, text = self.clock().strftime("%Y-%m"), plan["type"], plan["content"]
+        when = self._kst(scheduled_at) if scheduled_at else None
+        month = (when or self.clock()).strftime("%Y-%m")
+        kind, text, sched = plan["type"], plan["content"], when.isoformat() if when else None
         if self.s.sms_dry_run:
             rid = f"dryrun-{uuid.uuid4().hex[:12]}"
-            self.logs.add(month, kind, text, len(targets), "dry_run", rid)
-            return {"request_id": rid, "count": len(targets), "dry_run": True}
+            self.logs.add(month, kind, text, len(targets), "scheduled" if when else "dry_run", rid, scheduled_at=sched)
+            return {"request_id": rid, "count": len(targets), "dry_run": True, "scheduled_at": sched}
         sent, ids = 0, []
         solapi = self.s.sms_provider != "sens"
         call, size, label = (self._call_solapi, SOLAPI_CHUNK, "솔라피") if solapi else (self._call_sens, CHUNK, "SENS")
         for i in range(0, len(targets), size):
             chunk = targets[i:i + size]
             try:
-                rid = call(kind, text, [m["phone"] for m in chunk])
+                rid = call(kind, text, [m["phone"] for m in chunk]) if not when else \
+                    self._call_solapi(kind, text, [m["phone"] for m in chunk], when)
             except Exception as e:  # 한 묶음이 실패해도 앞서 보낸 것은 기록을 남긴다
-                self.logs.add(month, kind, text, len(chunk), "failed", error=str(e)[:300])
+                self.logs.add(month, kind, text, len(chunk), "failed", error=str(e)[:300], scheduled_at=sched)
                 raise SmsRejected([f"{label} 발송 실패: {e}"]) from e
-            self.logs.add(month, kind, text, len(chunk), "sent", rid)
+            self.logs.add(month, kind, text, len(chunk), "scheduled" if when else "sent", rid, scheduled_at=sched)
             sent += len(chunk)
             ids.append(rid)
-        return {"request_id": ",".join(ids), "count": sent, "dry_run": False}
+        return {"request_id": ",".join(ids), "count": sent, "dry_run": False, "scheduled_at": sched}
+
+    def cancel(self, log_id: int) -> dict | None:
+        """예약 문자를 취소한다. 없는 기록이면 None, 취소할 수 없으면 SmsRejected."""
+        log = self.logs.get(log_id)
+        if not log:
+            return None
+        if log["status"] != "scheduled":
+            raise SmsRejected(["예약 상태의 문자만 취소할 수 있습니다."])
+        if datetime.fromisoformat(log["scheduled_at"]) <= self.clock():
+            raise SmsRejected(["이미 예약 시각이 지나 취소할 수 없습니다."])
+        rid = log["request_id"] or ""
+        if not rid.startswith("dryrun-"):
+            try:
+                self._cancel_solapi(rid)
+            except Exception as e:
+                raise SmsRejected([f"솔라피 예약 취소 실패: {e}"]) from e
+        self.logs.set_status(log_id, "canceled")
+        return {**log, "status": "canceled"}
+
+    def _cancel_solapi(self, group_id: str) -> None:
+        s = self.s
+        date = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        headers = {"Authorization": solapi_auth(s.solapi_api_key, s.solapi_api_secret, date, uuid.uuid4().hex)}
+        client = self.http or httpx.Client(timeout=10)
+        r = client.delete(f"{SOLAPI_BASE}/messages/v4/groups/{group_id}/schedule", headers=headers)
+        if r.status_code >= 400:
+            raise RuntimeError(f"HTTP {r.status_code} {r.text[:200]}")
 
     def _call_sens(self, kind: str, text: str, phones: list[str]) -> str:
         s = self.s
@@ -153,7 +194,7 @@ class SmsService:
             raise RuntimeError(f"HTTP {r.status_code} {r.text[:200]}")
         return r.json().get("requestId", "")
 
-    def _call_solapi(self, kind: str, text: str, phones: list[str]) -> str:
+    def _call_solapi(self, kind: str, text: str, phones: list[str], scheduled_at: datetime | None = None) -> str:
         """send-many/detail 로 한 묶음을 보내고 그룹 ID 를 돌려준다."""
         s = self.s
         date = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -167,7 +208,10 @@ class SmsService:
                 m["subject"] = f"(광고){s.store_name}"[:40]
             messages.append(m)
         client = self.http or httpx.Client(timeout=10)
-        r = client.post(SOLAPI_BASE + "/messages/v4/send-many/detail", json={"messages": messages}, headers=headers)
+        payload = {"messages": messages}
+        if scheduled_at:
+            payload["scheduledDate"] = scheduled_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        r = client.post(SOLAPI_BASE + "/messages/v4/send-many/detail", json=payload, headers=headers)
         if r.status_code >= 400:
             try:
                 err = r.json()

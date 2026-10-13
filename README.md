@@ -19,7 +19,9 @@ uv sync
 uv run fastapi dev main.py
 
 # 페이지 (저장소 루트에서, 서버가 켜져 있어야 QR 로그인·문자 발송이 동작)
-pip install -r requirements.txt
+uv venv .venv
+source .venv/Scripts/activate
+uv pip install -r requirements.txt
 streamlit run user/app.py --server.port 8501    # 사용자 (?table=12 로 테이블 지정)
 streamlit run admin/app.py --server.port 8502   # 관리자 (현재 토큰 입력 생략. 끄려면 ADMIN_SKIP_TOKEN=0, 토큰은 ADMIN_TOKEN)
 ```

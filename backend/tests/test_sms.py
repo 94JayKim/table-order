@@ -81,7 +81,7 @@ def test_real_send_calls_sens_with_signed_request_and_logs_failure():
         return httpx.Response(202, json={"requestId": "REQ-1"}) if len(calls) == 1 else httpx.Response(500, text="boom")
 
     fake = httpx.Client(transport=httpx.MockTransport(handler))
-    cfg = settings(sms_dry_run=False, sens_service_id="svc", sens_access_key="ak", sens_secret_key="sk",
+    cfg = settings(sms_provider="sens", sms_dry_run=False, sens_service_id="svc", sens_access_key="ak", sens_secret_key="sk",
                    sens_sender_number="02-123-4567", sens_opt_out_number="080-111-2222")
     with TestClient(create_app(cfg, sms_clock=at(14), sms_http=fake)) as c:
         member(c, "가", "010-1111-2222")
@@ -104,7 +104,49 @@ def test_real_send_calls_sens_with_signed_request_and_logs_failure():
 
 
 def test_real_send_requires_sens_settings():
-    with TestClient(create_app(settings(sms_dry_run=False), sms_clock=at(14))) as c:
+    with TestClient(create_app(settings(sms_provider="sens", sms_dry_run=False), sms_clock=at(14))) as c:
         member(c, "가")
         p = c.post("/admin/api/marketing/sms/preview", headers=ADMIN, json=body()).json()
         assert not p["ok"] and any("SENS 설정" in x for x in p["problems"])
+
+
+def test_real_send_requires_solapi_settings():
+    with TestClient(create_app(settings(sms_dry_run=False), sms_clock=at(14))) as c:
+        member(c, "가")
+        p = c.post("/admin/api/marketing/sms/preview", headers=ADMIN, json=body()).json()
+        assert not p["ok"] and any("솔라피 설정" in x for x in p["problems"])
+
+
+def test_solapi_auth_header_matches_sdk_rule():
+    import hashlib, hmac
+    h = sens.solapi_auth("KEY", "SECRET", "2026-10-13T12:00:00+00:00", "salt1")
+    sig = hmac.new(b"SECRET", b"2026-10-13T12:00:00+00:00salt1", hashlib.sha256).hexdigest()
+    assert h == f"HMAC-SHA256 ApiKey=KEY, Date=2026-10-13T12:00:00+00:00, salt=salt1, signature={sig}"
+
+
+def test_real_send_via_solapi_and_failure_logged():
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if len(calls) == 1:
+            return httpx.Response(200, json={"groupInfo": {"groupId": "G1", "count": {"total": 1, "registeredFailed": 0}}})
+        return httpx.Response(400, json={"errorCode": "SenderIdNotFound", "errorMessage": "발신번호 미등록"})
+
+    fake = httpx.Client(transport=httpx.MockTransport(handler))
+    cfg = settings(sms_dry_run=False, solapi_api_key="ak", solapi_api_secret="sk",
+                   solapi_sender_number="010-9999-8888", sens_opt_out_number="080-111-2222")
+    with TestClient(create_app(cfg, sms_clock=at(14), sms_http=fake)) as c:
+        member(c, "가", "010-1111-2222")
+        r = c.post("/admin/api/marketing/sms/send", headers=ADMIN, json=body())
+        assert r.status_code == 200 and r.json() == {"request_id": "G1", "count": 1, "dry_run": False}
+        req = calls[0]
+        assert req.url.path == "/messages/v4/send-many/detail"
+        assert req.headers["authorization"].startswith("HMAC-SHA256 ApiKey=ak, Date=")
+        import json
+        m = json.loads(req.content)["messages"][0]
+        assert m["to"] == "01011112222" and m["from"] == "01099998888" and m["type"] == "SMS"
+        assert m["text"].startswith("(광고)") and "080-111-2222" in m["text"]
+        bad = c.post("/admin/api/marketing/sms/send", headers=ADMIN, json=body())
+        assert bad.status_code == 409 and "SenderIdNotFound" in bad.json()["detail"]["problems"][0]
+        assert [l["status"] for l in c.get("/admin/api/marketing/sms/logs", headers=ADMIN).json()] == ["failed", "sent"]

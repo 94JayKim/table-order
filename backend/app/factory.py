@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.settings import Settings, get_settings
 from app.routers import admin, auth, user
 from app.services.kakao import KakaoClient
+from app.services.supabase_auth import SupabaseAuthClient
 from app.services.sens import SmsService
 from app.stores.content import ContentStore
 from app.stores.db import Database
@@ -36,6 +37,7 @@ def create_app(settings: Settings | None = None, sms_clock=None, sms_http=None) 
     app.state.sms_logs = SmsLogStore(db)
     app.state.sms = SmsService(settings, app.state.members, app.state.sms_logs, clock=sms_clock, http=sms_http)
     app.state.kakao = KakaoClient(settings)
+    app.state.supabase = SupabaseAuthClient(settings)
     app.dependency_overrides[get_settings] = lambda: settings
     app.include_router(auth.router)
     app.include_router(user.router)

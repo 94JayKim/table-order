@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     kakao_rest_api_key: str = ""
     kakao_client_secret: str = ""
     kakao_redirect_uri: str = "http://localhost:8000/api/auth/kakao/callback"
+    # Supabase Auth 로 카카오 로그인 처리 (URL 과 anon 키가 모두 있으면 직접 카카오 호출 대신 이 방식을 쓴다)
+    supabase_url: str = ""
+    supabase_anon_key: str = ""
+    supabase_service_role_key: str = ""  # 서버 전용. 현재 로그인 흐름에는 쓰지 않음
     jwt_secret: str = "change-me"
     login_ttl_seconds: int = 180
     jwt_expire_minutes: int = 720
@@ -41,6 +45,10 @@ class Settings(BaseSettings):
     sms_monthly_limit: int = 50
     lms_monthly_limit: int = 10
     sms_dry_run: bool = True  # True면 SENS를 호출하지 않고 로그만 남긴다
+
+    @property
+    def supabase_enabled(self) -> bool:
+        return bool(self.supabase_url and self.supabase_anon_key)
 
 
 @lru_cache

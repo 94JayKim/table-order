@@ -104,3 +104,52 @@ def test_mock_page_hidden_when_real_keys_set():
         loc = c.get(f"/api/auth/kakao/start?token={q['token']}", follow_redirects=False).headers["location"]
         qs = parse_qs(urlparse(loc).query)
         assert loc.startswith("https://kauth.kakao.com/oauth/authorize") and qs["state"] == [q["token"]]
+
+
+# --- Supabase Auth (카카오 로그인을 Supabase 가 처리) ---
+def make_supabase():
+    s = Settings(database_url="sqlite:///:memory:", kakao_rest_api_key="", public_base_url="http://t",
+                 jwt_secret="x" * 32, supabase_url="https://abc.supabase.co", supabase_anon_key="anon", _env_file=None)
+    return create_app(s)
+
+
+def test_supabase_pkce_pair():
+    import base64, hashlib
+    from app.services.supabase_auth import new_pkce_pair
+    verifier, challenge = new_pkce_pair()
+    assert challenge == base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+
+
+def test_supabase_flow(monkeypatch):
+    app = make_supabase()
+    seen = {}
+
+    async def fake_profile(code, verifier):
+        seen.update(code=code, verifier=verifier)
+        return {"kakao_id": "sb:uuid-1", "nickname": "슈파", "gender": None, "birthday": None}
+
+    monkeypatch.setattr(app.state.supabase, "fetch_profile", fake_profile)
+    with TestClient(app) as c:
+        q = c.post("/api/auth/qr", json={"table_no": 3}).json()
+        r = c.get(f"/api/auth/kakao/start?token={q['token']}", follow_redirects=False)
+        loc = urlparse(r.headers["location"])
+        assert r.status_code == 302 and loc.netloc == "abc.supabase.co" and loc.path == "/auth/v1/authorize"
+        params = parse_qs(loc.query)
+        assert params["provider"] == ["kakao"] and params["code_challenge_method"] == ["s256"]
+        assert params["redirect_to"] == [f"http://t/api/auth/supabase/callback/{q['token']}"]
+        assert c.get("/api/auth/kakao/mock", params={"state": q["token"]}).status_code == 404  # 모의 화면 꺼짐
+        ok = c.get(f"/api/auth/supabase/callback/{q['token']}", params={"code": "abc"})
+        assert ok.status_code == 200 and "슈파" in ok.text and seen["code"] == "abc" and seen["verifier"]
+        done = c.get(f"/api/auth/qr/{q['secret']}").json()
+        assert done["event"] == "logged_in" and done["member"]["nickname"] == "슈파"
+        # 같은 QR 의 콜백 재사용 거부
+        assert c.get(f"/api/auth/supabase/callback/{q['token']}", params={"code": "abc"}).status_code == 410
+
+
+def test_supabase_callback_rejects_unscanned_error_and_unknown_state():
+    with TestClient(make_supabase()) as c:
+        q = c.post("/api/auth/qr", json={"table_no": 1}).json()
+        assert c.get(f"/api/auth/supabase/callback/{q['token']}", params={"code": "x"}).status_code == 410  # 스캔 전
+        assert c.get("/api/auth/supabase/callback/nope", params={"code": "x"}).status_code == 410
+        c.get(f"/api/auth/kakao/start?token={q['token']}", follow_redirects=False)
+        assert c.get(f"/api/auth/supabase/callback/{q['token']}", params={"error": "access_denied"}).status_code == 400

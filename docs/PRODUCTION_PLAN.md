@@ -217,10 +217,12 @@ JWT_SECRET=<긴 랜덤 문자열>          # change-me 그대로 두지 말 것
 ```
 - 카카오 키(`KAKAO_REST_API_KEY` 등)는 Supabase 방식에서는 **Supabase 대시보드에만** 넣고 `.env`에는 필요 없다.
 
-**8단계. (내가 하는 코드 작업 — 키가 준비되면 요청)**
-- `/api/auth/kakao/start` 가 카카오 대신 **Supabase의 카카오 로그인 주소**로 302 하도록 변경, 콜백에서 Supabase 세션(사용자 id·닉네임)을 받아 기존 QR 세션(`login_sessions`)을 `logged_in` 으로 전환.
-- `members.kakao_id` 를 Supabase 사용자 id(`auth.users.id`)와 연결, 모의 모드는 Supabase 키가 없을 때만 유지.
-- 기존 테스트(`backend/tests/test_auth.py`)는 모의 모드로 계속 통과시키고, Supabase 호출 부분은 가짜 응답으로 테스트 추가.
+**8단계. 코드 연동 (✅ 완료: `backend/app/services/supabase_auth.py`, `routers/auth.py`)**
+- `SUPABASE_URL` + `SUPABASE_ANON_KEY` 가 `.env`에 있으면 자동으로 Supabase 방식이 켜진다. 없으면 기존 방식(카카오 직접 / 모의)이 그대로 동작한다.
+- 흐름: QR 스캔 → `/kakao/start` 가 PKCE 값을 만들고 Supabase `/auth/v1/authorize?provider=kakao` 로 302 → 카카오 로그인 → Supabase 가 `{PUBLIC_BASE_URL}/api/auth/supabase/callback/{QR토큰}?code=` 로 복귀 → 서버가 code + code_verifier 로 사용자 확인 → 회원 저장, JWT 발급, 태블릿 전환.
+- **6단계 Redirect URLs 에 `{PUBLIC_BASE_URL}/**` 가 꼭 있어야 한다** (콜백이 이 경로 아래).
+- `members.kakao_id` 에는 `sb:<Supabase 사용자 id>` 가 저장된다. Supabase 방식에서는 모의 로그인 화면이 꺼진다.
+- 테스트: `backend/tests/test_auth.py` (Supabase 호출은 가짜 응답, 실제 Supabase 와의 통신은 9단계 실기기 확인에서 검증).
 
 **9단계. 실기기 확인**
 1. 서버 실행 후 태블릿 화면의 QR을 **휴대폰 카메라**로 스캔 (휴대폰과 서버가 같은 와이파이, 또는 HTTPS 도메인/터널).

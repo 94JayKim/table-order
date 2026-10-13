@@ -94,17 +94,27 @@ class ApiBackend:
     def sms_usage(self):
         return api.get(f"{ENDPOINTS['sms']}/usage", self.token)
 
-    def sms_preview(self, grades, body):
-        return api.post(f"{ENDPOINTS['sms']}/preview", self.token, json={"grades": grades, "body": body})
+    def sms_preview(self, grades, body, scheduled_at=None):
+        return api.post(f"{ENDPOINTS['sms']}/preview", self.token, json=_sms_body(grades, body, scheduled_at))
 
-    def sms_send(self, grades, body):
-        return api.post(f"{ENDPOINTS['sms']}/send", self.token, json={"grades": grades, "body": body})
+    def sms_send(self, grades, body, scheduled_at=None):
+        return api.post(f"{ENDPOINTS['sms']}/send", self.token, json=_sms_body(grades, body, scheduled_at))
+
+    def sms_cancel(self, log_id):
+        return api.post(f"{ENDPOINTS['sms']}/logs/{log_id}/cancel", self.token)
 
     def sms_logs(self):
         return api.get(f"{ENDPOINTS['sms']}/logs", self.token)
 
     def opt_out(self, member_id):
         return api.post(ENDPOINTS["opt_out"].format(id=member_id), self.token)
+
+
+def _sms_body(grades, body, scheduled_at) -> dict:
+    data = {"grades": grades, "body": body}
+    if scheduled_at:
+        data["scheduled_at"] = scheduled_at.isoformat()  # 시간대 없으면 서버가 KST 로 본다
+    return data
 
 
 VIRTUAL_CATEGORIES = {"ai", "best"}  # 손님 화면에만 있는 가상 카테고리(AI 추천 조합·인기메뉴). 메뉴를 직접 넣지 않는다

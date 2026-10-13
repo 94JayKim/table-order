@@ -43,6 +43,11 @@ class SmsIn(BaseModel):
     scheduled_at: datetime | None = None  # 예약 발송 시각 (시간대 없으면 KST)
 
 
+class SmsTestIn(BaseModel):
+    phone: str
+    body: str = Field(min_length=1)
+
+
 def _rule(s: Settings, repeat=None, regular=None, dormant=None) -> dict:
     return {"repeat": repeat or s.grade_repeat_visits, "regular": regular or s.grade_regular_visits,
             "dormant": dormant or s.grade_dormant_days}
@@ -144,6 +149,15 @@ def sms_send(body: SmsIn, request: Request):
         return _sms(request).send(body.grades, body.body, body.scheduled_at)
     except SmsRejected as e:
         raise HTTPException(409, {"problems": e.problems})
+
+
+@router.post("/sms/test")
+def sms_test(body: SmsTestIn, request: Request):
+    """수신번호 1건으로 바로 문자를 보내 본다 (관리자 인증 필수, 회원·동의 조건 없음)."""
+    try:
+        return _sms(request).send_test(body.phone, body.body)
+    except SmsRejected as e:
+        raise HTTPException(409, {"ok": False, "problems": e.problems})
 
 
 @router.post("/marketing/sms/logs/{log_id}/cancel")

@@ -543,7 +543,8 @@ SMS_TEMPLATES = {
     "🆕 신메뉴 안내": ("신메뉴 먹태구이가 나왔어요. 시원한 맥주와 함께 즐겨보세요!", ["신규", "재방문", "단골"]),
     "🎁 단골 감사": ("항상 찾아주셔서 감사해요. 이번 주 방문 시 음료 1잔을 서비스로 드려요.", ["단골"]),
 }
-STATUS_LABEL = {"sent": ("발송됨", "ok"), "dry_run": ("테스트(DRY RUN)", "warn"), "failed": ("실패", "bad")}
+STATUS_LABEL = {"sent": ("발송됨", "ok"), "dry_run": ("테스트(DRY RUN)", "warn"), "failed": ("실패", "bad"),
+                "scheduled": ("예약됨", "ok"), "canceled": ("취소됨", "warn")}
 
 
 def use_sms_template(name):
@@ -591,6 +592,8 @@ def sms_history(logs):
         label, tone = STATUS_LABEL.get(log["status"], (log["status"], "warn"))
         text = escape(log["content"].split("\n")[1] if "\n" in log["content"] else log["content"])
         err = f'<div class="herr">{escape(log["error"])}</div>' if log.get("error") else ""
+        if log.get("scheduled_at"):
+            err += f'<div class="hsub">예약 {kst_text(log["scheduled_at"])}</div>'
         rows += (f'<div class="hrow"><div class="ht">{kst_text(log["ts"])}</div>'
                  f'<div class="hb"><div class="hmsg">{text}</div>{err}</div>'
                  f'<span class="tag {tone}">{label}</span><span class="pill">{log["type"]}</span>'
@@ -632,10 +635,17 @@ def marketing_dashboard(repo):
         grades = st.multiselect("대상 등급", GRADES, key="sms_grades",
                                 format_func=lambda g: f"{g} ({int(by_grade.get(g, 0))}명)")
         body = st.text_area("본문", key="sms_body", height=130, help="앞에 (광고) 표기와 뒤에 수신거부 안내가 자동으로 붙어요")
+        scheduled_at = None
+        if st.checkbox("예약 발송", key="sms_schedule", help="지금부터 10분 이후, 야간(21~08시) 제외"):
+            d_col, t_col = st.columns(2)
+            soon = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None) + timedelta(hours=1)
+            day = d_col.date_input("예약 날짜", value=soon.date(), min_value=soon.date(), key="sms_day")
+            hhmm = t_col.time_input("예약 시각", value=soon.replace(minute=0, second=0, microsecond=0).time(), key="sms_time")
+            scheduled_at = datetime.combine(day, hhmm)  # 시간대 없음 = KST
         plan = None
         if grades:
             try:
-                plan = repo.sms_preview(grades, body)
+                plan = repo.sms_preview(grades, body, scheduled_at)
             except repo_mod.api.ApiError as e:
                 st.error(f"미리보기에 실패했습니다: {e.detail}")
         if plan:
@@ -643,10 +653,11 @@ def marketing_dashboard(repo):
                        + (" · 🧪 DRY RUN (실제 전송 없음)" if plan["dry_run"] else ""))
             for problem in plan["problems"]:
                 st.warning(problem)
-        if st.button("발송", type="primary", disabled=not (plan and plan["ok"]), width="stretch"):
+        if st.button("예약" if scheduled_at else "발송", type="primary", disabled=not (plan and plan["ok"]), width="stretch"):
             try:
-                r = repo.sms_send(grades, body)
-                st.toast(f"{r['count']}명 발송 처리했습니다." + (" (DRY RUN)" if r["dry_run"] else ""), icon="✅")
+                r = repo.sms_send(grades, body, scheduled_at)
+                st.toast(f"{r['count']}명 " + ("예약했습니다." if scheduled_at else "발송 처리했습니다.")
+                         + (" (DRY RUN)" if r["dry_run"] else ""), icon="✅")
             except repo_mod.api.ApiError as e:
                 problems = e.detail.get("problems", []) if isinstance(e.detail, dict) else [str(e.detail)]
                 st.error("발송하지 못했습니다: " + " / ".join(problems))
@@ -666,8 +677,19 @@ def marketing_dashboard(repo):
             st.caption("수신 동의한 회원이 없습니다.")
         st.caption(f"수신거부 회원 {int(members['수신거부'].sum())}명 — 발송 대상에서 제외됩니다. (회원 본인은 태블릿에서도 거부할 수 있어요)")
 
-    sec_title("발송 내역", f"{len(repo.sms_logs())}건")
-    st.html(sms_history(repo.sms_logs()))
+    logs = repo.sms_logs()
+    sec_title("발송 내역", f"{len(logs)}건")
+    st.html(sms_history(logs))
+    pending = [x for x in logs if x["status"] == "scheduled" and kst_text(x["scheduled_at"]) >= datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M")]
+    for log in pending:
+        if st.button(f"예약 취소 · {kst_text(log['scheduled_at'])} · {log['target_count']}명", key=f"cancel_{log['id']}"):
+            try:
+                repo.sms_cancel(log["id"])
+                st.toast("예약을 취소했습니다.", icon="✅")
+            except (repo_mod.api.ApiError, Unsupported) as e:
+                st.error(f"취소하지 못했습니다: {getattr(e, 'detail', e)}")
+            else:
+                st.rerun()
 
 
 def marketing_ai_tab(repo):

@@ -9,7 +9,7 @@ from app.core.dependencies import require_admin
 from app.core.settings import Settings, get_settings
 from app.services import stats
 from app.services.grades import GRADES, KST, age_group, gender_label, grade_of
-from app.services.sens import SmsRejected, SmsService
+from app.services.sms import SmsRejected, SmsService
 from datetime import datetime
 
 router = APIRouter(prefix="/admin/api", tags=["관리자"], dependencies=[Depends(require_admin)])
@@ -40,6 +40,12 @@ class MenuIn(BaseModel):
 class SmsIn(BaseModel):
     grades: list[str] = Field(min_length=1)
     body: str
+    scheduled_at: datetime | None = None  # 예약 발송 시각 (시간대 없으면 KST)
+
+
+class SmsTestIn(BaseModel):
+    phone: str
+    body: str = Field(min_length=1)
 
 
 def _rule(s: Settings, repeat=None, regular=None, dormant=None) -> dict:
@@ -133,16 +139,36 @@ async def sms_usage(request: Request):
 @router.post("/marketing/sms/preview")
 async def sms_preview(body: SmsIn, request: Request):
     _check_grades(body.grades)
-    return _sms(request).preview(body.grades, body.body)
+    return _sms(request).preview(body.grades, body.body, body.scheduled_at)
 
 
 @router.post("/marketing/sms/send")
 def sms_send(body: SmsIn, request: Request):
     _check_grades(body.grades)
     try:
-        return _sms(request).send(body.grades, body.body)
+        return _sms(request).send(body.grades, body.body, body.scheduled_at)
     except SmsRejected as e:
         raise HTTPException(409, {"problems": e.problems})
+
+
+@router.post("/sms/test")
+def sms_test(body: SmsTestIn, request: Request):
+    """수신번호 1건으로 바로 문자를 보내 본다 (관리자 인증 필수, 회원·동의 조건 없음)."""
+    try:
+        return _sms(request).send_test(body.phone, body.body)
+    except SmsRejected as e:
+        raise HTTPException(409, {"ok": False, "problems": e.problems})
+
+
+@router.post("/marketing/sms/logs/{log_id}/cancel")
+def sms_cancel(log_id: int, request: Request):
+    try:
+        done = _sms(request).cancel(log_id)
+    except SmsRejected as e:
+        raise HTTPException(409, {"problems": e.problems})
+    if done is None:
+        raise HTTPException(404, "없는 발송 기록입니다.")
+    return done
 
 
 @router.get("/marketing/sms/logs")

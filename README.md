@@ -26,7 +26,7 @@ streamlit run admin/app.py --server.port 8502   # 관리자 (현재 토큰 입�
 
 - 휴대폰으로 QR 로그인을 시험하려면 `backend/.env` 의 `PUBLIC_BASE_URL` 을 서버 PC 주소(예: `http://192.168.0.10:8000`)로 두고 `--host 0.0.0.0` 으로 실행하세요. 카카오 키가 없으면 모의 로그인 화면이 열립니다.
 - 문자 발송은 `SMS_DRY_RUN=true`(기본)이면 실제 전송 없이 기록만 남깁니다.
-- 공급자는 `SMS_PROVIDER`(`solapi` 기본 | `sens`)로 고르며 솔라피는 `SOLAPI_API_KEY`·`SOLAPI_API_SECRET`·`SOLAPI_SENDER_NUMBER`가 필요합니다.
+- 문자는 솔라피로 발송하며 `SOLAPI_API_KEY`·`SOLAPI_API_SECRET`·`SOLAPI_SENDER_NUMBER`·`SMS_OPT_OUT_NUMBER`(무료수신거부 번호)가 필요합니다.
 - 자세한 계획과 체크리스트: `docs/PRODUCTION_PLAN.md`
 
 ## Streamlit Community Cloud 배포 (user·admin 각각)

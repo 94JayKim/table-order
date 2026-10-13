@@ -1,13 +1,10 @@
-"""문자 발송. 발송 규칙은 admin/sens_demo.py 더미에서 검증한 것과 같다.
+"""솔라피(Solapi) 문자 발송.
 
-공급자는 SMS_PROVIDER 로 고른다: solapi(기본) | sens(네이버 클라우드).
 SMS_DRY_RUN=true(기본)이면 외부를 호출하지 않고 로그만 남긴다.
 """
 
-import base64
 import hashlib
 import hmac
-import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from datetime import time as dtime
@@ -22,8 +19,6 @@ from app.stores.sms_logs import SmsLogStore
 SMS_LIMIT_BYTES = 90
 MIN_LEAD = timedelta(minutes=10)  # 예약은 지금부터 최소 10분 뒤
 NIGHT_START, NIGHT_END = dtime(21, 0), dtime(8, 0)  # 광고성 문자 야간 발송 제한
-CHUNK = 100  # SENS 1회 호출당 수신자 수 상한 (콘솔 문서로 현재 값 재확인 필요)
-BASE = "https://sens.apigw.ntruss.com"
 SOLAPI_BASE = "https://api.solapi.com"
 SOLAPI_CHUNK = 1000  # 솔라피 send-many 1회 호출 상한은 10,000건이지만 여유를 둔다
 
@@ -52,11 +47,6 @@ def is_night(now: dtime) -> bool:
     return now >= NIGHT_START or now < NIGHT_END
 
 
-def signature(secret: str, method: str, uri: str, timestamp: str, access_key: str) -> str:
-    message = f"{method} {uri}\n{timestamp}\n{access_key}".encode()
-    return base64.b64encode(hmac.new(secret.encode(), message, hashlib.sha256).digest()).decode()
-
-
 class SmsService:
     def __init__(self, settings: Settings, members: MemberStore, logs: SmsLogStore, clock=None, http=None):
         self.s, self.members, self.logs = settings, members, logs
@@ -65,13 +55,10 @@ class SmsService:
 
     def _configured(self) -> bool:
         s = self.s
-        if s.sms_provider == "sens":
-            return bool(s.sens_service_id and s.sens_access_key and s.sens_secret_key
-                        and s.sens_sender_number and s.sens_opt_out_number)
-        return bool(s.solapi_api_key and s.solapi_api_secret and s.solapi_sender_number and s.sens_opt_out_number)
+        return bool(s.solapi_api_key and s.solapi_api_secret and s.solapi_sender_number and s.sms_opt_out_number)
 
     def build(self, body: str) -> str:
-        number = self.s.sens_opt_out_number or "080-000-0000"
+        number = self.s.sms_opt_out_number or "080-000-0000"
         return f"(광고){self.s.store_name}\n{body.strip()}\n무료수신거부 {number}"
 
     def targets(self, grades: list[str]) -> list[dict]:
@@ -103,17 +90,12 @@ class SmsService:
         if when:
             if when < self.clock() + MIN_LEAD:
                 problems.append("예약 시각은 지금부터 10분 이후여야 합니다.")
-            if not self.s.sms_dry_run and self.s.sms_provider == "sens":
-                problems.append("예약 발송은 솔라피에서만 지원합니다. (SMS_PROVIDER=solapi)")
         if is_night((when or self.clock()).timetz().replace(tzinfo=None)):
             problems.append("야간(21시~08시)에는 광고성 문자를 보낼 수 없습니다.")
         if len(targets) > remaining:
             problems.append(f"이번 달 {kind} 무료 잔여 {max(remaining, 0)}건보다 대상({len(targets)}명)이 많습니다.")
         if not self.s.sms_dry_run and not self._configured():
-            if self.s.sms_provider == "sens":
-                problems.append("SENS 설정(서비스 ID·키·발신번호·수신거부 번호)이 비어 있습니다.")
-            else:
-                problems.append("솔라피 설정(API 키·시크릿·발신번호·수신거부 번호)이 비어 있습니다.")
+            problems.append("솔라피 설정(API 키·시크릿·발신번호·수신거부 번호)이 비어 있습니다.")
         return {"type": kind, "bytes": msg_bytes(text), "content": text, "targets": len(targets),
                 "remaining": remaining, "problems": problems, "ok": not problems, "dry_run": self.s.sms_dry_run,
                 "scheduled_at": when.isoformat() if when else None}
@@ -134,16 +116,13 @@ class SmsService:
             self.logs.add(month, kind, text, len(targets), "scheduled" if when else "dry_run", rid, scheduled_at=sched)
             return {"request_id": rid, "count": len(targets), "dry_run": True, "scheduled_at": sched}
         sent, ids = 0, []
-        solapi = self.s.sms_provider != "sens"
-        call, size, label = (self._call_solapi, SOLAPI_CHUNK, "솔라피") if solapi else (self._call_sens, CHUNK, "SENS")
-        for i in range(0, len(targets), size):
-            chunk = targets[i:i + size]
+        for i in range(0, len(targets), SOLAPI_CHUNK):
+            chunk = targets[i:i + SOLAPI_CHUNK]
             try:
-                rid = call(kind, text, [m["phone"] for m in chunk]) if not when else \
-                    self._call_solapi(kind, text, [m["phone"] for m in chunk], when)
+                rid = self._call_solapi(kind, text, [m["phone"] for m in chunk], when)
             except Exception as e:  # 한 묶음이 실패해도 앞서 보낸 것은 기록을 남긴다
                 self.logs.add(month, kind, text, len(chunk), "failed", error=str(e)[:300], scheduled_at=sched)
-                raise SmsRejected([f"{label} 발송 실패: {e}"]) from e
+                raise SmsRejected([f"솔라피 발송 실패: {e}"]) from e
             self.logs.add(month, kind, text, len(chunk), "scheduled" if when else "sent", rid, scheduled_at=sched)
             sent += len(chunk)
             ids.append(rid)
@@ -175,24 +154,6 @@ class SmsService:
         r = client.delete(f"{SOLAPI_BASE}/messages/v4/groups/{group_id}/schedule", headers=headers)
         if r.status_code >= 400:
             raise RuntimeError(f"HTTP {r.status_code} {r.text[:200]}")
-
-    def _call_sens(self, kind: str, text: str, phones: list[str]) -> str:
-        s = self.s
-        uri = f"/sms/v2/services/{s.sens_service_id}/messages"
-        ts = str(int(time.time() * 1000))
-        headers = {"Content-Type": "application/json; charset=utf-8", "x-ncp-apigw-timestamp": ts,
-                   "x-ncp-iam-access-key": s.sens_access_key,
-                   "x-ncp-apigw-signature-v2": signature(s.sens_secret_key, "POST", uri, ts, s.sens_access_key)}
-        payload = {"type": kind, "contentType": "AD", "countryCode": "82",
-                   "from": s.sens_sender_number.replace("-", ""), "content": text,
-                   "messages": [{"to": p.replace("-", "")} for p in phones]}
-        if kind == "LMS":
-            payload["subject"] = f"(광고){s.store_name}"[:40]
-        client = self.http or httpx.Client(timeout=10)
-        r = client.post(BASE + uri, json=payload, headers=headers)
-        if r.status_code != 202:
-            raise RuntimeError(f"HTTP {r.status_code} {r.text[:200]}")
-        return r.json().get("requestId", "")
 
     def _call_solapi(self, kind: str, text: str, phones: list[str], scheduled_at: datetime | None = None) -> str:
         """send-many/detail 로 한 묶음을 보내고 그룹 ID 를 돌려준다."""

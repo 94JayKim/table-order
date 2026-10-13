@@ -9,7 +9,7 @@ from app.core.dependencies import require_admin
 from app.core.settings import Settings, get_settings
 from app.services import stats
 from app.services.grades import GRADES, KST, age_group, gender_label, grade_of
-from app.services.sens import SmsRejected, SmsService
+from app.services.sms import SmsRejected, SmsService
 from datetime import datetime
 
 router = APIRouter(prefix="/admin/api", tags=["관리자"], dependencies=[Depends(require_admin)])

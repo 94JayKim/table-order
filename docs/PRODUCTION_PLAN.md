@@ -155,6 +155,91 @@
 - [ ] 휴대폰이 접속할 수 있는 서버 주소 확보 (같은 와이파이의 PC 주소, 또는 도메인+HTTPS/터널) → `PUBLIC_BASE_URL`
 - [ ] 키를 `backend/.env`에만 입력 (저장소·채팅에 올리지 말 것)
 
+### 카카오 QR 로그인 + Supabase Auth 연동 — 단계별 가이드 🙋
+
+> 목표: 휴대폰이 QR을 스캔하면 **카카오 로그인은 Supabase Auth가 처리**하고, 로그인 결과(회원)를 태블릿에 전달한다.
+> 현재 코드는 백엔드가 카카오를 직접 호출한다(`backend/app/services/kakao.py`). 아래 1~7단계는 **당신이 콘솔에서 하는 일**이고,
+> 8단계 이후 코드 전환(백엔드가 Supabase로 로그인 처리, `members`를 Supabase 사용자와 연결)은 키가 준비되면 내가 한다.
+> 화면 이름은 콘솔 개편으로 조금 다를 수 있으니, 메뉴명이 안 보이면 비슷한 이름을 찾아 진행한다.
+
+**1단계. Supabase 프로젝트 만들기**
+1. https://supabase.com 가입 → New project (Region은 `Northeast Asia (Seoul)` 권장, DB 비밀번호는 따로 안전하게 보관).
+2. 프로젝트가 만들어지면 **Project Settings → API**(또는 Data API) 에서 아래 값을 메모한다.
+   - `Project URL` (예: `https://abcd1234.supabase.co`) → `SUPABASE_URL`
+   - `anon` / publishable key → `SUPABASE_ANON_KEY` (공개돼도 되는 키)
+   - `service_role` / secret key → `SUPABASE_SERVICE_ROLE_KEY` (**절대 공개 금지**, 서버 `.env`에만)
+3. `Project URL`의 `abcd1234` 부분이 **project ref**다. 아래 콜백 주소에 쓰인다.
+
+**2단계. 카카오 개발자 앱 만들기**
+1. https://developers.kakao.com 로그인 → **내 애플리케이션 → 애플리케이션 추가하기** (앱 이름 예: `역전할머니맥주 홍대점`).
+2. **앱 설정 → 앱 키** 에서 **REST API 키**를 메모한다 (Supabase의 *Client ID* 가 된다).
+
+**3단계. 카카오 로그인 켜기 + Redirect URI 등록 (가장 많이 틀리는 곳)**
+1. **제품 설정 → 카카오 로그인** → 활성화 **ON**.
+2. **Redirect URI** 에 아래를 **정확히** 등록한다 (끝 슬래시·http/https까지 일치해야 함).
+   ```
+   https://<프로젝트ref>.supabase.co/auth/v1/callback
+   ```
+   - 카카오가 돌려보내는 곳은 우리 서버가 아니라 **Supabase**다. 기존 계획의 `{PUBLIC_BASE_URL}/api/auth/kakao/callback` 은 Supabase 방식에서는 카카오에 등록하지 않는다.
+3. **보안 → Client Secret** 에서 코드를 생성하고 **활성화 상태: 사용함** 으로 바꾼다 → 코드 값을 메모 (Supabase의 *Client Secret* 이 된다).
+
+**4단계. 카카오 동의항목 설정**
+1. **제품 설정 → 카카오 로그인 → 동의항목**.
+2. **닉네임(profile_nickname)** 을 *필수 동의* 로 설정한다.
+3. **카카오계정(이메일)**: Supabase 카카오 연동은 기본적으로 이메일을 요청한다. 이메일은 **비즈 앱 전환(사업자 정보 등록) 후에만** 필수로 받을 수 있다.
+   - 비즈 앱이 아직 없다면: Supabase 쪽 카카오 설정에 이메일 없이 로그인을 허용하는 옵션(예: *Allow users without an email*)이 있는지 5단계에서 확인하고 켠다. 켜지 못하면 로그인 시 `KOE205`(잘못된 scope) 오류가 난다 → 그때는 **앱 설정 → 비즈니스 → 비즈 앱 전환** 을 먼저 진행한다.
+4. 성별·생일은 선택 동의로 설정해도 되지만, 심사 없이 받을 수 있는 범위인지 화면의 안내를 확인한다. 휴대폰 번호는 비즈 앱 심사가 필요하므로 지금은 받지 않는다(현재 코드는 직접 입력 기준).
+
+**5단계. Supabase에 카카오 등록**
+1. Supabase 대시보드 → **Authentication → Sign In / Providers**(또는 Providers) → **Kakao** → Enable.
+2. **Client ID** = 카카오 *REST API 키*, **Client Secret** = 3단계에서 만든 *Client Secret 코드* 입력 → Save.
+3. 같은 화면에 보이는 **Callback URL** 이 3단계에서 카카오에 등록한 주소와 **글자 하나까지 같은지** 비교한다.
+
+**6단계. Supabase에 우리 서버 주소 허용**
+1. **Authentication → URL Configuration**.
+2. **Site URL**: 운영 주소(예: `https://order.example.com`). 개발 중에는 `http://localhost:8000`.
+3. **Redirect URLs** 에 로그인 후 돌아올 우리 백엔드 주소를 추가한다 (개발·운영 각각).
+   ```
+   http://localhost:8000/**
+   http://<서버PC 와이파이 IP>:8000/**
+   https://<운영 도메인>/**
+   ```
+   - 여기에 없는 주소로는 Supabase가 돌려보내 주지 않는다(로그인 후 엉뚱한 Site URL로 가는 증상의 원인).
+
+**7단계. 키를 `.env`에 넣기 (저장소·채팅에 올리지 말 것)**
+`backend/.env` 에 아래 값을 추가한다 (예시는 `backend/.env.example` 에 내가 추가해 둔다).
+```
+SUPABASE_URL=https://<프로젝트ref>.supabase.co
+SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...        # 서버 전용
+PUBLIC_BASE_URL=http://<서버PC 와이파이 IP>:8000   # 휴대폰이 접속 가능한 주소
+JWT_SECRET=<긴 랜덤 문자열>          # change-me 그대로 두지 말 것
+```
+- 카카오 키(`KAKAO_REST_API_KEY` 등)는 Supabase 방식에서는 **Supabase 대시보드에만** 넣고 `.env`에는 필요 없다.
+
+**8단계. 코드 연동 (✅ 완료: `backend/app/services/supabase_auth.py`, `routers/auth.py`)**
+- `SUPABASE_URL` + `SUPABASE_ANON_KEY` 가 `.env`에 있으면 자동으로 Supabase 방식이 켜진다. 없으면 기존 방식(카카오 직접 / 모의)이 그대로 동작한다.
+- 흐름: QR 스캔 → `/kakao/start` 가 PKCE 값을 만들고 Supabase `/auth/v1/authorize?provider=kakao` 로 302 → 카카오 로그인 → Supabase 가 `{PUBLIC_BASE_URL}/api/auth/supabase/callback/{QR토큰}?code=` 로 복귀 → 서버가 code + code_verifier 로 사용자 확인 → 회원 저장, JWT 발급, 태블릿 전환.
+- **6단계 Redirect URLs 에 `{PUBLIC_BASE_URL}/**` 가 꼭 있어야 한다** (콜백이 이 경로 아래).
+- `members.kakao_id` 에는 `sb:<Supabase 사용자 id>` 가 저장된다. Supabase 방식에서는 모의 로그인 화면이 꺼진다.
+- 테스트: `backend/tests/test_auth.py` (Supabase 호출은 가짜 응답, 실제 Supabase 와의 통신은 9단계 실기기 확인에서 검증).
+
+**9단계. 실기기 확인**
+1. 서버 실행 후 태블릿 화면의 QR을 **휴대폰 카메라**로 스캔 (휴대폰과 서버가 같은 와이파이, 또는 HTTPS 도메인/터널).
+2. 카카오 로그인 화면 → 동의 → 태블릿 화면이 자동 전환되는지 확인.
+3. Supabase 대시보드 **Authentication → Users** 에 방금 로그인한 사용자가 생겼는지 확인.
+4. 5장 체크리스트(QR 만료, 같은 QR 재스캔 거부)를 수행.
+
+**막혔을 때 자주 나오는 오류**
+| 증상 | 원인 / 조치 |
+|---|---|
+| `KOE006` / `redirect_uri mismatch` | 카카오에 등록한 Redirect URI가 Supabase Callback URL과 다름 (3단계) |
+| `KOE205` | 요청한 동의항목(이메일 등)이 카카오 앱에 설정되지 않음 (4단계) |
+| `KOE101` / invalid client | REST API 키 오타, 또는 카카오 로그인 활성화 OFF |
+| 로그인 후 엉뚱한 주소로 이동 | Supabase *Redirect URLs* 에 우리 주소가 없음 (6단계) |
+| 휴대폰에서 QR 주소가 열리지 않음 | `PUBLIC_BASE_URL` 이 `localhost` 로 되어 있음, 또는 다른 와이파이 |
+| 개발(HTTP)은 되는데 운영에서 실패 | 운영 도메인용 Redirect URL·카카오 앱 도메인 설정 누락 |
+
 ### 네이버 클라우드 SENS (실제 발송 전까지)
 - [ ] 네이버 클라우드 가입·결제수단 등록, SENS 프로젝트 생성
 - [ ] 서비스 ID, Access Key, Secret Key 발급 → `.env`

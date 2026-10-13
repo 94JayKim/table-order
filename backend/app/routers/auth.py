@@ -13,7 +13,8 @@ from pydantic import BaseModel, Field
 
 from app.core.settings import Settings, get_settings
 from app.services import tokens
-from app.services.kakao import KakaoClient, KakaoError
+from app.services.kakao import KakaoError
+from app.services.supabase_auth import SupabaseAuthError, new_pkce_pair
 
 router = APIRouter(prefix="/api/auth", tags=["QR 로그인"])
 
@@ -55,7 +56,7 @@ async def poll_status(secret: str, request: Request):
 
 
 @router.get("/kakao/start")
-async def kakao_start(token: str, request: Request):
+async def kakao_start(token: str, request: Request, settings: Settings = Depends(get_settings)):
     """QR을 스캔한 휴대폰이 여는 주소. 스캔 상태로 바꾸고 카카오 로그인으로 보낸다."""
     store = request.app.state.login_store
     s = store.by_token(token)
@@ -64,13 +65,16 @@ async def kakao_start(token: str, request: Request):
     if not store.mark_scanned(s):
         msg = "이미 사용된 QR입니다." if store.status(s) == "logged_in" else "QR이 만료되었습니다."
         return _page("로그인할 수 없어요", msg + " 태블릿에서 새 QR을 받아 주세요.", 410)
+    if settings.supabase_enabled:  # Supabase Auth 가 카카오 로그인을 처리한다
+        s.pkce_verifier, challenge = new_pkce_pair()
+        return RedirectResponse(request.app.state.supabase.authorize_url(token, challenge), status_code=302)
     return RedirectResponse(request.app.state.kakao.authorize_url(token), status_code=302)
 
 
 @router.get("/kakao/mock", include_in_schema=False)
-async def kakao_mock(state: str, request: Request):
+async def kakao_mock(state: str, request: Request, settings: Settings = Depends(get_settings)):
     """키가 없을 때만 열리는 모의 카카오 로그인 화면."""
-    if not request.app.state.kakao.mock:
+    if not request.app.state.kakao.mock or settings.supabase_enabled:
         raise HTTPException(404)
     return HTMLResponse(
         '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
@@ -94,6 +98,29 @@ async def kakao_callback(request: Request, state: str, code: str = "", error: st
     try:
         profile = await app.state.kakao.fetch_profile(code)
     except KakaoError as e:
+        return _page("카카오 로그인에 실패했어요", html.escape(str(e)), 502)
+    member = app.state.members.upsert_login(**profile)
+    access = tokens.issue(member["id"], settings.jwt_secret, settings.jwt_expire_minutes)
+    if not store.complete(s, _public_member(member), access):
+        return _page("로그인할 수 없어요", "QR이 만료되었습니다.", 410)
+    return _page(f"{member['nickname']}님, 로그인 완료!", "태블릿 화면을 확인해 주세요. 이 창은 닫으셔도 됩니다.")
+
+
+@router.get("/supabase/callback/{state}")
+async def supabase_callback(state: str, request: Request, code: str = "", error: str = "",
+                            settings: Settings = Depends(get_settings)):
+    """Supabase 가 카카오 로그인 후 돌려보내는 주소. state(경로) = 발급한 QR 토큰."""
+    app = request.app
+    store = app.state.login_store
+    s = store.by_token(state)
+    if not settings.supabase_enabled or not s or store.status(s) != "scanned" or not s.pkce_verifier:
+        return _page("로그인할 수 없어요", "만료되었거나 이미 사용된 QR입니다. 태블릿에서 새 QR을 받아 주세요.", 410)
+    if error or not code:
+        return _page("로그인이 취소되었어요", "다시 시도하려면 QR을 한 번 더 스캔해 주세요.", 400)
+    verifier, s.pkce_verifier = s.pkce_verifier, None  # 코드 교환은 한 번만
+    try:
+        profile = await app.state.supabase.fetch_profile(code, verifier)
+    except SupabaseAuthError as e:
         return _page("카카오 로그인에 실패했어요", html.escape(str(e)), 502)
     member = app.state.members.upsert_login(**profile)
     access = tokens.issue(member["id"], settings.jwt_secret, settings.jwt_expire_minutes)

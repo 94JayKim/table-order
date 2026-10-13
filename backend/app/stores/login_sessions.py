@@ -21,6 +21,7 @@ class LoginSession:
     status: str = "waiting"
     member: dict | None = None
     access_token: str | None = None
+    pkce_verifier: str | None = None  # Supabase PKCE 용. 서버만 보관한다
     claimed: bool = False  # 로그인 결과를 태블릿이 이미 받아갔는지
     subscribers: list[asyncio.Queue] = field(default_factory=list)
 

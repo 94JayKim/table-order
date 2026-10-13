@@ -128,6 +128,39 @@ class SmsService:
             ids.append(rid)
         return {"request_id": ",".join(ids), "count": sent, "dry_run": False, "scheduled_at": sched}
 
+    def send_test(self, phone: str, body: str) -> dict:
+        """관리자 테스트용: 회원·동의 조건 없이 입력한 번호 1건으로 즉시 발송한다. 월 한도·야간 제한은 그대로 적용."""
+        digits = phone.replace("-", "").strip()
+        if not (digits.isdigit() and 10 <= len(digits) <= 11 and digits.startswith("01")):
+            raise SmsRejected(["수신번호 형식이 올바르지 않습니다. (예: 010-1234-5678)"])
+        if not body.strip():
+            raise SmsRejected(["본문이 비어 있습니다."])
+        text = f"[테스트] {body.strip()}"
+        kind, now = msg_type(text), self.clock()
+        month = now.strftime("%Y-%m")
+        usage = self.usage(month)
+        problems = []
+        if is_night(now.timetz().replace(tzinfo=None)):
+            problems.append("야간(21시~08시)에는 문자를 보낼 수 없습니다.")
+        if usage["limit"][kind] - usage["used"][kind] < 1:
+            problems.append(f"이번 달 {kind} 무료 잔여가 없습니다.")
+        if not self.s.sms_dry_run and not (
+                self.s.solapi_api_key and self.s.solapi_api_secret and self.s.solapi_sender_number):
+            problems.append("솔라피 설정(API 키·시크릿·발신번호)이 비어 있습니다.")
+        if problems:
+            raise SmsRejected(problems)
+        if self.s.sms_dry_run:
+            rid = f"dryrun-{uuid.uuid4().hex[:12]}"
+            self.logs.add(month, kind, text, 1, "dry_run", rid)
+            return {"ok": True, "dry_run": True, "type": kind, "request_id": rid, "to": digits}
+        try:
+            rid = self._call_solapi(kind, text, [digits])
+        except Exception as e:
+            self.logs.add(month, kind, text, 1, "failed", error=str(e)[:300])
+            raise SmsRejected([f"솔라피 발송 실패: {e}"]) from e
+        self.logs.add(month, kind, text, 1, "sent", rid)
+        return {"ok": True, "dry_run": False, "type": kind, "request_id": rid, "to": digits}
+
     def cancel(self, log_id: int) -> dict | None:
         """예약 문자를 취소한다. 없는 기록이면 None, 취소할 수 없으면 SmsRejected."""
         log = self.logs.get(log_id)

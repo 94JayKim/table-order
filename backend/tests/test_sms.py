@@ -162,3 +162,25 @@ def test_real_schedule_sends_scheduled_date_and_cancel_calls_solapi():
         assert c.post(f"/admin/api/marketing/sms/logs/{log['id']}/cancel", headers=ADMIN).status_code == 200
         assert calls[1].method == "DELETE" and calls[1].url.path == "/messages/v4/groups/G9/schedule"
         assert sum(c.get("/admin/api/marketing/sms/usage", headers=ADMIN).json()["used"].values()) == 0
+
+
+def test_sms_test_endpoint_requires_admin_and_dry_runs():
+    with TestClient(create_app(settings(), sms_clock=at(14))) as c:
+        req = {"phone": "010-1234-5678", "body": "테스트"}
+        assert c.post("/admin/api/sms/test", json=req).status_code in (401, 403)
+        r = c.post("/admin/api/sms/test", headers=ADMIN, json=req)
+        assert r.status_code == 200 and r.json()["dry_run"] is True and r.json()["to"] == "01012345678"
+        assert c.get("/admin/api/marketing/sms/logs", headers=ADMIN).json()[0]["status"] == "dry_run"
+
+
+def test_sms_test_endpoint_rejects_bad_phone_night_and_quota():
+    with TestClient(create_app(settings(), sms_clock=at(14))) as c:
+        r = c.post("/admin/api/sms/test", headers=ADMIN, json={"phone": "123", "body": "x"})
+        assert r.status_code == 409 and r.json()["detail"]["ok"] is False
+    with TestClient(create_app(settings(), sms_clock=at(22))) as c:
+        r = c.post("/admin/api/sms/test", headers=ADMIN, json={"phone": "01012345678", "body": "x"})
+        assert r.status_code == 409 and "야간" in r.json()["detail"]["problems"][0]
+    with TestClient(create_app(settings(sms_monthly_limit=1), sms_clock=at(14))) as c:
+        req = {"phone": "01012345678", "body": "x"}
+        assert c.post("/admin/api/sms/test", headers=ADMIN, json=req).status_code == 200
+        assert c.post("/admin/api/sms/test", headers=ADMIN, json=req).status_code == 409

@@ -202,6 +202,11 @@ SMS_PROMPT = (
     "설명 없이 문구만 출력하세요.")
 
 
+def external_context() -> tuple[str, str]:
+    """(오늘 날씨, 행사) 문구. TODO: 날씨·행사 API 연동 지점 — 연결 전에는 빈 문자열이라 고정 문구가 쓰인다."""
+    return "", ""
+
+
 def keyword_combos(max_size: int = 2) -> list[tuple[str, ...]]:
     """버튼으로 보여줄 키워드 묶음: 단일 키워드 전부 + 수신자가 겹치는 복합 키워드."""
     names = list(KEYWORD_GRADES)

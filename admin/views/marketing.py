@@ -24,7 +24,7 @@ STATUS_LABEL = {"sent": ("발송됨", "ok"), "dry_run": ("테스트(DRY RUN)", "
 def make_ai_candidates(repo):
     """[AI 문자 생성]: 수신자와 문구를 내부적으로 만들어 후보 버튼으로 보여 준다."""
     ctx = marketing_ai.build_context(repo, ss["grade_rule"])
-    ss["ai_candidates"] = marketing_ai.suggest_candidates(ctx, ss.get("ai_weather", ""), ss.get("ai_event", ""))
+    ss["ai_candidates"] = marketing_ai.suggest_candidates(ctx, *marketing_ai.external_context())
     ss["ai_picked"] = None
 
 
@@ -130,9 +130,6 @@ def marketing_dashboard(repo):
         st.button("✨ AI 문자 생성", key="ai_sms_generate", type="secondary", width="stretch",
                   on_click=make_ai_candidates, args=(repo,),
                   help="수신 대상과 문구를 AI가 만들어 후보 버튼으로 보여줘요 (AI 키가 없으면 템플릿 문구)")
-        with st.expander("날씨·행사 직접 입력 (선택)"):
-            st.text_input("오늘 날씨", key="ai_weather", placeholder=marketing_ai.DEFAULT_WEATHER)
-            st.text_input("행사 내용", key="ai_event", placeholder=marketing_ai.DEFAULT_EVENT)
         cands = ss.get("ai_candidates")
         if cands:
             by_grade_pool = pool["등급"].value_counts().to_dict()

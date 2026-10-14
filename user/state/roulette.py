@@ -14,12 +14,20 @@ def spins_left():
     return sum(1 for m in st.session_state.members if m["eligible"] and m["prize"] is None)
 
 
+def pick_prize_index(prizes):
+    """칸별 weight(관리자 '이벤트'에서 설정, 없으면 1)에 비례해 당첨 칸을 고른다. 합이 0 이면 모두 같은 확률."""
+    weights = [max(float(p.get("weight", 1)), 0) for p in prizes]
+    if not sum(weights):
+        return random.randrange(len(prizes))
+    return random.choices(range(len(prizes)), weights=weights)[0]
+
+
 def spin_roulette():
     ss = st.session_state
     row = next((m for m in ss.members if m["eligible"] and m["prize"] is None), None)
     if row is None:
         return
-    idx = random.randrange(len(ctx.ROULETTE_PRIZES))
+    idx = pick_prize_index(ctx.ROULETTE_PRIZES)
     seg = 360 / len(ctx.ROULETTE_PRIZES)
     # 포인터(12시 방향) 아래에 당첨 칸의 중앙 부근이 오도록 회전
     angle = 360 * 5 - (idx * seg + random.uniform(-seg * 0.3, seg * 0.3))

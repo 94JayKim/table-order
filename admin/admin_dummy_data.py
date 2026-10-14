@@ -3,6 +3,7 @@
 반환 모양은 백엔드 /admin/api/* 응답과 같다. 그래서 화면과 변환 코드(admin_repository.py)는
 데이터가 더미인지 서버인지 모르고, DATA_SOURCE 만 바꾸면 전환된다.
 """
+import copy
 import random
 from datetime import date, datetime, timedelta, timezone
 
@@ -42,6 +43,13 @@ MENUS = [
     _menu("d1", "side", "콜라", 2000, set_ok=False),
 ]
 
+# 손님 화면 룰렛 칸과 같은 모양 (user/menu_data.py ROULETTE_PRIZES). weight 는 당첨 확률 가중치.
+ROULETTE_PRIZES = [
+    {"label": "모든 메뉴<br><b>5% 할인</b>", "short": "전 메뉴 5% 할인", "emoji": "🎟️", "color": "#f0556b", "kind": "discount", "percent": 5, "weight": 1},
+    {"label": "계란말이<br><b>서비스</b>", "short": "계란말이 서비스", "emoji": "🥚", "color": "#ff9f1a", "kind": "free", "item_id": "a4", "weight": 1},
+    {"label": "음료<br><b>서비스</b>", "short": "콜라 서비스", "emoji": "🥤", "color": "#f5c518", "kind": "free", "item_id": "d1", "weight": 1},
+]
+
 
 class Unsupported(Exception):
     """더미 모드에서는 쓸 수 없는 기능 (예: 실제 문자 발송)."""
@@ -70,6 +78,7 @@ class DummyBackend:
         r = random.Random(seed)
         self.menus_ = [dict(m) for m in MENUS]
         self.categories_ = [dict(c) for c in CATEGORIES]
+        self.roulette_ = copy.deepcopy(ROULETTE_PRIZES)
         self.members_ = []
         for i in range(1, 61):
             self.members_.append({
@@ -108,6 +117,13 @@ class DummyBackend:
     def save_categories(self, categories: list) -> list:
         self.categories_ = [dict(c) for c in categories]
         return self.categories_full()
+
+    def roulette_prizes(self) -> list:
+        return copy.deepcopy(self.roulette_)
+
+    def save_roulette_prizes(self, prizes: list) -> list:
+        self.roulette_ = copy.deepcopy(prizes)
+        return self.roulette_prizes()
 
     def save_menu(self, menu_id: str, fields: dict) -> dict:
         cur = next((m for m in self.menus_ if m["id"] == menu_id), None)

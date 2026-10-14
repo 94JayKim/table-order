@@ -21,7 +21,7 @@ shared/    두 페이지가 같이 쓰는 API 호출 코드
 | `state/` | `st.session_state` 조작과 계산 (장바구니·로그인·퀴즈 등), `context.py` 는 매장 데이터 | `services/` |
 | `shared/api.py`, `*_repository.py` | 서버/더미 데이터 호출 | `stores/` |
 
-- `admin/`: `views/`(대시보드·메뉴·가중치·고객·주문·마케팅·로그인), `ui/widgets.py`
+- `admin/`: `views/`(대시보드·메뉴·가중치·이벤트·고객·주문·마케팅·로그인), `ui/widgets.py`
 - `user/`: `views/`(splash·order·ai), `ui/`(common·cart·dialogs·login·roulette), `state/`(session·cart·login·roulette·quiz·context)
 - 새 모듈은 저장소 루트 기준으로 `from user.state.cart import ...`, `from admin.ui.widgets import ...` 처럼 import 합니다.
 

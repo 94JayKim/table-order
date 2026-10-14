@@ -24,6 +24,7 @@ importlib.reload(dashboard_stats)
 importlib.reload(order_filters)
 
 from admin.views.customers import page_customers  # noqa: E402
+from admin.views.events import page_events  # noqa: E402
 from admin.views.dashboard import page_dashboard  # noqa: E402
 from admin.views.login import login  # noqa: E402
 from admin.views.marketing import page_marketing  # noqa: E402
@@ -35,7 +36,7 @@ from admin_repository import DEFAULT_RULE  # noqa: E402
 st.set_page_config(page_title="식당도우미 관리자", page_icon="🍺", layout="wide", initial_sidebar_state="auto")
 st.html(Path(__file__).with_name("admin.css"))
 
-PAGES = ["대시보드", "메뉴 관리", "추천 가중치", "고객 등급", "주문 이력", "마케팅"]
+PAGES = ["대시보드", "메뉴 관리", "추천 가중치", "이벤트", "고객 등급", "주문 이력", "마케팅"]
 
 ss = st.session_state
 ss.setdefault("owner", False)
@@ -80,7 +81,7 @@ with st.sidebar:
 if ss["notice"]:
     st.warning(ss["notice"])
 
-{"대시보드": page_dashboard, "메뉴 관리": page_menu, "추천 가중치": page_weights, "고객 등급": page_customers,
+{"대시보드": page_dashboard, "메뉴 관리": page_menu, "추천 가중치": page_weights, "이벤트": page_events, "고객 등급": page_customers,
  "주문 이력": page_orders, "마케팅": page_marketing}[page](repo)
 
 # 메뉴 관리에서 고른 카테고리도 URL에 남겨 새로고침 후 복원한다 (페이지 실행 후의 최종 선택값 기준).

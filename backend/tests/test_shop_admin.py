@@ -123,3 +123,21 @@ def test_admin_can_edit_content_and_users_see_it(client):
 def test_admin_menu_categories_come_from_content(client):
     cats = client.get("/admin/api/menus", headers=ADMIN).json()["categories"]
     assert [c["id"] for c in cats] == ["chicken", "anju", "soup", "beer", "soju", "side"]  # ai/best 제외
+
+
+def test_admin_roulette_prizes_validation_and_weight_saved(client):
+    prizes = client.get("/api/content/roulette_prizes").json()
+    heavy = [dict(p, weight=0) for p in prizes]
+    heavy[0]["weight"] = 7
+    assert client.put("/admin/api/content/roulette_prizes", headers=ADMIN, json=heavy).status_code == 200
+    assert client.get("/api/content").json()["roulette_prizes"][0]["weight"] == 7
+    bad = {
+        "칸 하나": prizes[:1],
+        "가중치 합 0": [dict(p, weight=0) for p in prizes],
+        "음수 가중치": [dict(prizes[0], weight=-1)] + prizes[1:],
+        "할인율 범위": [dict(prizes[0], percent=0)] + prizes[1:],
+        "서비스 메뉴 없음": [{k: v for k, v in prizes[1].items() if k != "item_id"}] + prizes[:1],
+        "종류 오류": [dict(prizes[0], kind="x")] + prizes[1:],
+    }
+    for why, data in bad.items():
+        assert client.put("/admin/api/content/roulette_prizes", headers=ADMIN, json=data).status_code == 422, why

@@ -7,6 +7,7 @@ import streamlit as st
 
 from user.state import context as ctx
 from user.state.cart import cart_add, cart_count
+from user.state.menu_groups import group_spicy_variants
 from user.state.quiz import open_quiz
 from user.ui.common import mini_buttons, thumb_html, won
 from user.ui.dialogs import cart_dialog, orders_dialog, staff_dialog
@@ -48,14 +49,36 @@ def render_menu():
         return
     items = [m for m in ctx.MENU if "BEST" in m["tags"]] if cat == "best" else [m for m in ctx.MENU if m["cat"] == cat]
     category = ctx.CATEGORY_BY_ID[cat]
-    st.html(f'<div class="section-title">{category["icon"]} {category["name"]} <span>{len(items)}</span></div>')
+    entries = group_spicy_variants(items)
+    st.html(f'<div class="section-title">{category["icon"]} {category["name"]} <span>{len(entries)}</span></div>')
     with st.container(horizontal=True, key="menu_grid"):
-        for item in items:
-            with st.container(key=f"card_{item['id']}"):
-                st.html(thumb_html(item, cart_count(item["id"])) +
-                        f'<div class="mname">{item["name"]}</div><div class="mdesc">{item["desc"]}</div>'
-                        f'<div class="mprice">{won(item["price"])}</div>')
-                if st.button("품절" if item["soldout"] else "담기", key=f"add_{item['id']}", width="stretch",
-                             disabled=item["soldout"]):
-                    cart_add(item, "", item["price"], 1)
-                    st.rerun()
+        for entry in entries:
+            if entry["type"] == "item":
+                _render_card(entry["item"])
+            else:
+                _render_card(_selected_variant(entry), group=entry)
+
+
+def _selected_variant(group):
+    """그룹에서 지금 선택된 매운맛 단계의 메뉴. 선택 상태는 세션에 보관한다."""
+    by_label = dict(group["variants"])
+    key = f"spicy_{group['id']}"
+    if st.session_state.get(key) not in by_label:
+        st.session_state[key] = group["variants"][0][0]
+    return by_label[st.session_state[key]]
+
+
+def _render_card(item, group=None):
+    """메뉴 카드 하나. group 이 있으면 가격 아래에 매운맛 선택 버튼을 두고, 선택한 단계의 메뉴를 담는다."""
+    qty = cart_count(item["id"]) if group is None else sum(cart_count(m["id"]) for _, m in group["variants"])
+    with st.container(key=f"card_{item['id'] if group is None else group['id']}"):
+        st.html(thumb_html(item, qty) +
+                f'<div class="mname">{item["name"] if group is None else escape(group["name"])}</div>'
+                f'<div class="mdesc">{item["desc"]}</div><div class="mprice">{won(item["price"])}</div>')
+        if group is not None:
+            st.segmented_control("매운맛", [label for label, _ in group["variants"]], key=f"spicy_{group['id']}",
+                                 required=True, label_visibility="collapsed", width="stretch")
+        if st.button("품절" if item["soldout"] else "담기", key=f"add_{item['id']}", width="stretch",
+                     disabled=item["soldout"]):
+            cart_add(item, "", item["price"], 1)
+            st.rerun()

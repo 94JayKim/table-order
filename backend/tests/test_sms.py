@@ -184,3 +184,18 @@ def test_sms_test_endpoint_rejects_bad_phone_night_and_quota():
         req = {"phone": "01012345678", "body": "x"}
         assert c.post("/admin/api/sms/test", headers=ADMIN, json=req).status_code == 200
         assert c.post("/admin/api/sms/test", headers=ADMIN, json=req).status_code == 409
+
+
+def test_member_ids_narrow_targets_but_never_widen():
+    with TestClient(create_app(settings(), sms_clock=at(14))) as c:
+        member(c, "가"); member(c, "나"); member(c, "다", consent=False)
+        ids = [m["id"] for m in c.get("/admin/api/members", headers=ADMIN).json()["members"]]
+        full = c.post("/admin/api/marketing/sms/preview", headers=ADMIN, json=body()).json()["targets"]
+        assert full == 2
+        one = c.post("/admin/api/marketing/sms/preview", headers=ADMIN, json={**body(), "member_ids": ids[:1]}).json()
+        assert one["targets"] == 1
+        # 수신 미동의 회원 id 를 넣어도 대상이 늘지 않는다
+        every = c.post("/admin/api/marketing/sms/preview", headers=ADMIN, json={**body(), "member_ids": ids}).json()
+        assert every["targets"] == 2
+        r = c.post("/admin/api/marketing/sms/send", headers=ADMIN, json={**body(), "member_ids": ids[:1]})
+        assert r.json()["count"] == 1

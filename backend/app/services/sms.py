@@ -61,13 +61,14 @@ class SmsService:
         number = self.s.sms_opt_out_number or "080-000-0000"
         return f"(광고){self.s.store_name}\n{body.strip()}\n무료수신거부 {number}"
 
-    def targets(self, grades: list[str]) -> list[dict]:
+    def targets(self, grades: list[str], member_ids: list[int] | None = None) -> list[dict]:
         today = self.clock().date()
         rule = {"repeat": self.s.grade_repeat_visits, "regular": self.s.grade_regular_visits,
                 "dormant": self.s.grade_dormant_days}
         return [m for m in self.members.all()
                 if m["phone"] and m["marketing_consent"] and not m["opted_out"]
-                and grade_of(m, today, **rule) in grades]
+                and grade_of(m, today, **rule) in grades
+                and (member_ids is None or m["id"] in member_ids)]
 
     def usage(self, month: str | None = None) -> dict:
         month = month or self.clock().strftime("%Y-%m")
@@ -75,13 +76,14 @@ class SmsService:
         return {"month": month, "used": used,
                 "limit": {"SMS": self.s.sms_monthly_limit, "LMS": self.s.lms_monthly_limit}}
 
-    def preview(self, grades: list[str], body: str, scheduled_at: datetime | None = None) -> dict:
+    def preview(self, grades: list[str], body: str, scheduled_at: datetime | None = None,
+                member_ids: list[int] | None = None) -> dict:
         text = self.build(body)
         kind = msg_type(text)
         when = self._kst(scheduled_at) if scheduled_at else None
         usage = self.usage(when.strftime("%Y-%m") if when else None)
         remaining = usage["limit"][kind] - usage["used"][kind]
-        targets = self.targets(grades)
+        targets = self.targets(grades, member_ids)
         problems = []
         if not body.strip():
             problems.append("본문이 비어 있습니다.")
@@ -103,11 +105,12 @@ class SmsService:
     def _kst(self, when: datetime) -> datetime:
         return (when.replace(tzinfo=KST) if when.tzinfo is None else when).astimezone(KST)
 
-    def send(self, grades: list[str], body: str, scheduled_at: datetime | None = None) -> dict:
-        plan = self.preview(grades, body, scheduled_at)
+    def send(self, grades: list[str], body: str, scheduled_at: datetime | None = None,
+             member_ids: list[int] | None = None) -> dict:
+        plan = self.preview(grades, body, scheduled_at, member_ids)
         if not plan["ok"]:
             raise SmsRejected(plan["problems"])
-        targets = self.targets(grades)
+        targets = self.targets(grades, member_ids)
         when = self._kst(scheduled_at) if scheduled_at else None
         month = (when or self.clock()).strftime("%Y-%m")
         kind, text, sched = plan["type"], plan["content"], when.isoformat() if when else None

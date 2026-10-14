@@ -17,48 +17,41 @@ ss = st.session_state
 MARKETING_TABS = ["대시보드", "AI"]
 
 
-SMS_TEMPLATES = {
-    "💤 휴면 복귀": ("오랜만이에요! 이번 주 방문하시면 안주 10% 할인해 드려요.", ["휴면"]),
-    "🆕 신메뉴 안내": ("신메뉴 먹태구이가 나왔어요. 시원한 맥주와 함께 즐겨보세요!", ["신규", "재방문", "단골"]),
-    "🎁 단골 감사": ("항상 찾아주셔서 감사해요. 이번 주 방문 시 음료 1잔을 서비스로 드려요.", ["단골"]),
-}
 STATUS_LABEL = {"sent": ("발송됨", "ok"), "dry_run": ("테스트(DRY RUN)", "warn"), "failed": ("실패", "bad"),
                 "scheduled": ("예약됨", "ok"), "canceled": ("취소됨", "warn")}
 
 
-def use_sms_template(name):
-    body, grades = SMS_TEMPLATES[name]
-    ss["sms_body"], ss["sms_grades"] = body, grades
-
-
-def apply_ai_keywords(repo, keywords):
-    """키워드 버튼: 수신 등급을 지정하고 AI(키 없으면 템플릿)로 본문을 채운다."""
+def make_ai_candidates(repo):
+    """[AI 문자 생성]: 수신자와 문구를 내부적으로 만들어 후보 버튼으로 보여 준다."""
     ctx = marketing_ai.build_context(repo, ss["grade_rule"])
-    body, source = marketing_ai.generate_sms(keywords, ctx, ss.get("ai_weather", ""), ss.get("ai_event", ""))
-    ss["sms_grades"], ss["sms_body"] = marketing_ai.keyword_grades(keywords), body
-    ss["ai_sms_note"] = (f"‘{marketing_ai.keyword_label(keywords)}’ 대상 "
-                         + ("AI가 문구를 만들었어요." if source == "ai" else "템플릿으로 문구를 만들었어요. (AI 키 미설정·호출 실패)"))
+    ss["ai_candidates"] = marketing_ai.suggest_candidates(ctx, ss.get("ai_weather", ""), ss.get("ai_event", ""))
+    ss["ai_picked"] = None
 
 
-def toggle_ai_panel():
-    ss["ai_sms_open"] = not ss.get("ai_sms_open", False)
+def pick_ai_candidate(i):
+    c = ss["ai_candidates"][i]
+    ss["sms_grades"], ss["sms_body"], ss["ai_picked"] = c["grades"], c["body"], i
+    ss["sms_excluded"] = set()  # 제외 체크는 새 후보를 고를 때마다 초기화
+    ss["sms_editor_v"] = ss.get("sms_editor_v", 0) + 1
 
 
-def ai_sms_panel(repo):
-    with st.container(border=True, key="ai_sms_panel"):
-        st.caption("키워드를 누르면 수신 등급이 자동 지정되고 문구가 작성란에 채워져요. 복합 키워드는 수신 대상이 겹치는 등급만 골라요.")
-        c1, c2 = st.columns(2)
-        c1.text_input("오늘 날씨 (선택)", key="ai_weather", placeholder=marketing_ai.DEFAULT_WEATHER)
-        c2.text_input("행사 내용 (선택)", key="ai_event", placeholder=marketing_ai.DEFAULT_EVENT)
-        combos = marketing_ai.keyword_combos()
-        for row in range(0, len(combos), 4):
-            cols = st.columns(4)
-            for col, kws in zip(cols, combos[row:row + 4]):
-                label = " + ".join(f"{marketing_ai.KEYWORD_ICON[k]}{k}" for k in kws)
-                col.button(label, key="aikw_" + "_".join(kws), width="stretch",
-                           on_click=apply_ai_keywords, args=(repo, kws))
-        if ss.get("ai_sms_note"):
-            st.caption("✅ " + ss["ai_sms_note"])
+def candidate_label(c, pool_by_grade):
+    n = sum(pool_by_grade.get(g, 0) for g in c["grades"])
+    icons = "".join(marketing_ai.KEYWORD_ICON[k] for k in c["keywords"])
+    return f"{icons} {' + '.join(c['keywords'])} · {n}명"
+
+
+def recipient_editor(pool, grades):
+    """대상 등급의 수신 가능 회원 목록. 체크를 풀면 그 회원은 발송에서 제외된다. 선택된 회원 id 를 돌려준다."""
+    rows = pool[pool["등급"].isin(grades)][["customer_id", "닉네임", "등급", "방문 횟수", "마지막 방문일"]].copy()
+    excluded = ss.setdefault("sms_excluded", set())
+    rows.insert(0, "발송", ~rows["customer_id"].isin(excluded))
+    edited = st.data_editor(rows, hide_index=True, width="stretch", height=min(320, 36 + 35 * len(rows)),
+                            disabled=[c for c in rows.columns if c != "발송"],
+                            column_config={"customer_id": None},
+                            key=f"sms_editor_{ss.get('sms_editor_v', 0)}_{'_'.join(grades)}")
+    ss["sms_excluded"] = (excluded - set(rows["customer_id"])) | set(edited.loc[~edited["발송"], "customer_id"])
+    return [int(i) for i in edited.loc[edited["발송"], "customer_id"]]
 
 
 def usage_card(label, used, limit):
@@ -131,23 +124,35 @@ def marketing_dashboard(repo):
     st.caption("수신 동의·휴대폰 번호가 있는 회원에게만, 야간(21~08시) 제외, 월 무료 한도 안에서 발송합니다. "
                "서버 설정 `SMS_DRY_RUN=true` 이면 실제 문자는 전송되지 않고 기록만 남습니다.")
 
-    t_col, b_col = st.columns([5, 1], vertical_alignment="bottom")
-    with t_col:
-        sec_title("문자 작성")
-    b_col.button("✨ AI 문자 생성", key="ai_sms_toggle", on_click=toggle_ai_panel, width="stretch")
-    if ss.get("ai_sms_open"):
-        ai_sms_panel(repo)
+    sec_title("문자 작성")
     left, right = st.columns([3, 2], gap="large")
     with left:
-        st.html('<div class="tpl-label">빠른 문구</div>')
-        tcols = st.columns(len(SMS_TEMPLATES))
-        for col, name in zip(tcols, SMS_TEMPLATES):
-            col.button(name, key=f"tpl_{name}", width="stretch", on_click=use_sms_template, args=(name,))
+        st.button("✨ AI 문자 생성", key="ai_sms_generate", type="secondary", width="stretch",
+                  on_click=make_ai_candidates, args=(repo,),
+                  help="수신 대상과 문구를 AI가 만들어 후보 버튼으로 보여줘요 (AI 키가 없으면 템플릿 문구)")
+        with st.expander("날씨·행사 직접 입력 (선택)"):
+            st.text_input("오늘 날씨", key="ai_weather", placeholder=marketing_ai.DEFAULT_WEATHER)
+            st.text_input("행사 내용", key="ai_event", placeholder=marketing_ai.DEFAULT_EVENT)
+        cands = ss.get("ai_candidates")
+        if cands:
+            by_grade_pool = pool["등급"].value_counts().to_dict()
+            st.html('<div class="tpl-label">추천 문자 — 고르면 아래에 수신자와 내용이 채워져요</div>')
+            for i, c in enumerate(cands):
+                st.button(candidate_label(c, by_grade_pool), key=f"ai_cand_{i}", width="stretch",
+                          type="primary" if ss.get("ai_picked") == i else "secondary",
+                          on_click=pick_ai_candidate, args=(i,))
+            if ss.get("ai_picked") is not None and cands[ss["ai_picked"]]["source"] == "template":
+                st.caption("AI 키가 없거나 호출에 실패해 템플릿 문구로 만들었어요.")
         ss.setdefault("sms_grades", ["휴면"])
         ss.setdefault("sms_body", "오랜만이에요! 이번 주 방문하시면 안주 10% 할인해 드려요.")
         by_grade = pool["등급"].value_counts()
         grades = st.multiselect("대상 등급", GRADES, key="sms_grades",
                                 format_func=lambda g: f"{g} ({int(by_grade.get(g, 0))}명)")
+        member_ids = None
+        if grades:
+            with st.expander(f"수신자 목록 ({int(sum(by_grade.get(g, 0) for g in grades))}명) — 체크를 풀면 제외돼요"):
+                member_ids = recipient_editor(pool, grades)
+                st.caption(f"선택 {len(member_ids)}명. 다른 등급을 더하려면 위 ‘대상 등급’에서 추가하세요.")
         body = st.text_area("본문", key="sms_body", height=130, help="앞에 (광고) 표기와 뒤에 수신거부 안내가 자동으로 붙어요")
         scheduled_at = None
         if st.checkbox("예약 발송", key="sms_schedule", help="지금부터 10분 이후, 야간(21~08시) 제외"):
@@ -159,7 +164,7 @@ def marketing_dashboard(repo):
         plan = None
         if grades:
             try:
-                plan = repo.sms_preview(grades, body, scheduled_at)
+                plan = repo.sms_preview(grades, body, scheduled_at, member_ids)
             except repo_mod.api.ApiError as e:
                 st.error(f"미리보기에 실패했습니다: {e.detail}")
         if plan:
@@ -169,7 +174,7 @@ def marketing_dashboard(repo):
                 st.warning(problem)
         if st.button("예약" if scheduled_at else "발송", type="primary", disabled=not (plan and plan["ok"]), width="stretch"):
             try:
-                r = repo.sms_send(grades, body, scheduled_at)
+                r = repo.sms_send(grades, body, scheduled_at, member_ids)
                 st.toast(f"{r['count']}명 " + ("예약했습니다." if scheduled_at else "발송 처리했습니다.")
                          + (" (DRY RUN)" if r["dry_run"] else ""), icon="✅")
             except repo_mod.api.ApiError as e:

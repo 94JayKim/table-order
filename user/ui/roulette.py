@@ -26,6 +26,7 @@ def render_roulette():
     dots = "".join(f'<div class="rw-dot" style="transform:rotate({k * 360 / 16}deg)"><i></i></div>' for k in range(16))
     conf = "".join(f'<div class="rw-conf" style="left:{x}%;top:{y}%;width:{w}px;height:{h}px;background:{col};transform:rotate({r}deg)"></div>'
                    for x, y, w, h, col, r in CONFETTI)
+    fs = round(4 * min(1, 5.5 / n), 2)  # 칸이 많을수록 글자를 줄여 START 버튼·옆 칸과 겹치지 않게 한다 (룰렛 너비 기준 cqw)
     cls = " spin" if spun and spun["animate"] else ""
     to = f'--to:{spun["angle"]}deg;' if spun else ""
     st.html('<div class="rw-title"><div class="fork">🍴</div>'
@@ -35,7 +36,7 @@ def render_roulette():
     with st.container(key="rw_box"):
         st.html('<div class="rw-stage"><div class="rw-stand"></div><div class="rw-ring"></div>'
                 f'{dots}<div class="rw-pin"></div>'
-                f'<div class="rw-wheel{cls}" style="{to}background:conic-gradient(from {-seg / 2}deg,{stops})">{labels}</div>'
+                f'<div class="rw-wheel{cls}" style="--rw-fs:{fs};{to}background:conic-gradient(from {-seg / 2}deg,{stops})">{labels}</div>'
                 f'{conf}<div class="rw-star" style="left:-8%;top:10%">⭐</div><div class="rw-star" style="right:-9%;top:28%">⭐</div>'
                 '<div class="rw-bubble l">오늘의<br>작은 행운!<br>어떤 선물이<br>기다리고 있을까요?</div>'
                 '<div class="rw-bubble r">맛있는 식사와<br>특별한 혜택을<br>함께! <span class="heart">♥</span></div></div>')

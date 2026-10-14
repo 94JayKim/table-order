@@ -230,9 +230,9 @@ button:focus-visible { outline: 3px solid #ffcf54 !important; outline-offset: 3p
 .rw-wheel.spin { animation: rw-spin 4.5s cubic-bezier(.12,.6,.1,1) both; }
 @keyframes rw-spin { from { transform: rotate(0deg); } to { transform: rotate(var(--to)); } }
 .rw-label { position: absolute; inset: 0; display: flex; justify-content: center; align-items: flex-start; padding-top: 7%; pointer-events: none; }
-.rw-label span { display: block; text-align: center; color: #fff; font-size: clamp(11px, 3.2vw, 17px); line-height: 1.25; font-weight: 600; text-shadow: 0 1px 3px rgba(0,0,0,.3); word-break: keep-all; }
+.rw-label span { display: block; text-align: center; color: #fff; font-size: calc(var(--rw-fs, 4) * 1cqw); line-height: 1.2; font-weight: 600; text-shadow: 0 1px 3px rgba(0,0,0,.3); word-break: keep-all; }
 .rw-label span b { font-weight: 900; font-size: 1.15em; }
-.rw-label span em { display: block; font-style: normal; font-size: 2.6em; line-height: 1.1; margin-top: 4px; filter: drop-shadow(0 3px 3px rgba(0,0,0,.25)); }
+.rw-label span em { display: block; font-style: normal; font-size: 2.1em; line-height: 1.1; margin-top: .15em; filter: drop-shadow(0 3px 3px rgba(0,0,0,.25)); }
 .rw-pin { position: absolute; left: 50%; top: -6%; width: 10%; aspect-ratio: .8; transform: translateX(-50%); z-index: 5; background: linear-gradient(#ff6b82, #e8344e);
   clip-path: polygon(50% 100%, 8% 52%, 0 32%, 12% 10%, 32% 0, 68% 0, 88% 10%, 100% 32%, 92% 52%); filter: drop-shadow(0 3px 3px rgba(0,0,0,.4)); }
 .rw-pin::after { content: ""; position: absolute; left: 50%; top: 22%; width: 34%; aspect-ratio: 1; margin-left: -17%; border-radius: 50%; background: #fff; }
@@ -248,7 +248,7 @@ button:focus-visible { outline: 3px solid #ffcf54 !important; outline-offset: 3p
 .st-key-rw_start { width: 23% !important; }
 .st-key-rw_start [data-testid="stButton"] button { width: 100%; height: auto; min-height: 0; }
 .st-key-rw_start button { width: 100%; aspect-ratio: 1; padding: 0; border-radius: 50%; border: 5px solid #ffc933; background: radial-gradient(circle at 35% 28%, #ff7088, #e0243f); box-shadow: 0 5px 12px rgba(0,0,0,.35); }
-.st-key-rw_start button p { color: #fff !important; font-weight: 900; font-size: clamp(14px, 3.4vw, 22px); letter-spacing: .5px; }
+.st-key-rw_start button p { color: #fff !important; font-weight: 900; font-size: clamp(11px, 4.4cqw, 22px); letter-spacing: .5px; }
 .st-key-rw_start button:hover { background: radial-gradient(circle at 35% 28%, #ff8196, #e8344e); border-color: #ffc933; }
 .st-key-rw_start button:disabled { background: radial-gradient(circle at 35% 28%, #ff7088, #e0243f); border-color: #ffc933; opacity: .55; }
 .st-key-rw_start button:disabled p { color: #fff !important; }
@@ -338,7 +338,7 @@ button:focus-visible { outline: 3px solid #ffcf54 !important; outline-offset: 3p
 }
 
 /* Keep the splash (roulette, and the result box after spinning) within the viewport so the page never scrolls. */
-.st-key-rw_box { --rw-reserve: 515px; width: min(88vw, 440px, max(190px, calc(100dvh - var(--rw-reserve)))); margin-top: 24px; }
+.st-key-rw_box { container-type: inline-size; --rw-reserve: 515px; width: min(88vw, 440px, max(190px, calc(100dvh - var(--rw-reserve)))); margin-top: 24px; }
 [data-testid="stMain"]:has(.rw-result) .st-key-rw_box { --rw-reserve: 665px; }
 .st-key-splash_bottom { margin-top: 28px; }
 .rw-result { margin-top: 20px; }

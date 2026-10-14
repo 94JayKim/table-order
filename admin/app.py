@@ -14,14 +14,28 @@ import streamlit as st
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))  # 저장소 루트: admin.*, shared.* 를 import 하기 위해
 
+import admin_dummy_data  # noqa: E402
 import admin_repository as repo_mod  # noqa: E402
 import dashboard_stats  # noqa: E402
+import marketing_ai  # noqa: E402
 import order_filters  # noqa: E402
 
 # 배포 서버가 재시작 없이 새 코드를 받으면 예전 모듈이 메모리에 남아 ImportError 가 난다.
-# 상태가 없는 계산 모듈만 매 실행마다 다시 읽는다 (저장소·더미 데이터 모듈은 세션이 들고 있어서 제외).
+# 상태가 없는 계산 모듈은 매 실행마다 다시 읽는다.
 importlib.reload(dashboard_stats)
 importlib.reload(order_filters)
+
+
+def _reload_if_changed(*modules) -> None:
+    """저장소·더미 모듈은 파일이 바뀌었거나(또는 이 검사가 없던 옛 프로세스가 올린 것이면) 한 번 다시 읽는다. 의존 순서대로 넘길 것."""
+    for m in modules:
+        mtime = Path(m.__file__).stat().st_mtime
+        if getattr(m, "_loaded_mtime", None) != mtime:
+            importlib.reload(m)
+            m._loaded_mtime = mtime
+
+
+_reload_if_changed(admin_dummy_data, marketing_ai, repo_mod)
 
 from admin.views.customers import page_customers  # noqa: E402
 from admin.views.calls import page_calls  # noqa: E402
@@ -47,6 +61,8 @@ ss.setdefault("token", "")
 ss.setdefault("menu_editor_v", 0)  # 저장 후 표 편집 상태를 초기화하기 위한 번호
 ss.setdefault("menu_cat", st.query_params.get("cat"))  # URL(?cat=)에서 복원 - 메뉴 관리에서 선택한 카테고리 id
 ss.setdefault("grade_rule", dict(DEFAULT_RULE))
+if ss["repo"] is not None and type(ss["repo"]) is not repo_mod.AdminRepository:
+    ss["owner"], ss["repo"] = False, None  # 코드가 다시 읽히기 전에 만든 옛 저장소 객체는 버리고 다시 입장
 
 
 if not ss["owner"] and repo_mod.skip_token_login() and not ss.get("auto_login_failed"):

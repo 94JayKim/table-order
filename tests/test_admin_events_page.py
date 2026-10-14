@@ -11,7 +11,6 @@ from streamlit.testing.v1 import AppTest
 
 import admin_repository as ar
 from admin_dummy_data import DummyBackend
-from shared import api
 from test_admin_menu_page import APP, server  # noqa: F401 - server 픽스처 재사용
 from user.state.roulette import pick_prize_index
 

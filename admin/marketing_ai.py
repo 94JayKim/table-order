@@ -7,8 +7,12 @@
 프롬프트에 넣고 대화 기록(history)과 함께 보내면 된다. 그 뒤 get_client() 가 ClaudeClient 를 돌려주게만 바꾸면
 화면 코드는 그대로다.
 """
+import os
 from collections import Counter
 from datetime import datetime
+from itertools import combinations
+
+import httpx
 
 import admin_repository as repo_mod
 from admin_dummy_data import Unsupported
@@ -173,3 +177,91 @@ def get_client():
 
 
 GREETING = "안녕하세요 사장님! 매장 데이터를 보고 마케팅 방법을 같이 고민해 드릴게요. 무엇이 궁금하세요?"
+
+
+# ---------------------------------------------------------------------------
+# AI 문자 생성: 키워드 → 수신 등급 → 문구
+# ---------------------------------------------------------------------------
+# 발송 API 는 '등급'으로 수신자를 정하므로(수신동의·야간·한도 검사는 서버 몫) 키워드도 등급 집합으로 푼다.
+# 복합 키워드는 등급 집합의 교집합이고, 교집합이 비는 조합은 만들지 않는다.
+KEYWORD_GRADES = {
+    "날씨": ["신규", "재방문", "단골", "휴면"],   # 날씨 안내는 전체 동의 회원
+    "행사": ["신규", "재방문", "단골", "휴면"],   # 행사 안내도 전체
+    "가중치": ["신규", "재방문", "단골"],        # 추천 가중치가 높은 메뉴를 알릴 대상: 최근 온 손님
+    "주문": ["신규", "재방문", "단골"],          # 최근 주문한 손님(휴면 제외)
+    "휴면": ["휴면"],
+    "단골": ["단골"],
+}
+KEYWORD_ICON = {"날씨": "🌦️", "행사": "🎉", "가중치": "⚖️", "주문": "🧾", "휴면": "💤", "단골": "🎁"}
+DEFAULT_WEATHER = "쌀쌀한 날씨"
+DEFAULT_EVENT = "이번 주 특별 이벤트"
+SMS_PROMPT = (
+    "당신은 호프집 사장님을 돕는 문자 카피라이터입니다. 아래 키워드와 매장 정보로 손님에게 보낼 문자 본문 한 개만 쓰세요. "
+    "한국어 존댓말, 친근한 톤, 80자 이내, 이모지 없이. (광고) 표기와 수신거부 안내는 시스템이 붙이니 쓰지 마세요. "
+    "설명 없이 문구만 출력하세요.")
+
+
+def keyword_combos(max_size: int = 2) -> list[tuple[str, ...]]:
+    """버튼으로 보여줄 키워드 묶음: 단일 키워드 전부 + 수신자가 겹치는 복합 키워드."""
+    names = list(KEYWORD_GRADES)
+    out = [(k,) for k in names]
+    for n in range(2, max_size + 1):
+        out += [c for c in combinations(names, n) if keyword_grades(c)]
+    return out
+
+
+def keyword_grades(keywords) -> list[str]:
+    """키워드들의 수신 등급 교집합 (등급 순서 유지). 비면 []."""
+    sets = [set(KEYWORD_GRADES[k]) for k in keywords]
+    common = set.intersection(*sets) if sets else set()
+    return [g for g in GRADE_ORDER if g in common]
+
+
+def keyword_label(keywords) -> str:
+    return " + ".join(keywords)
+
+
+def _facts(keywords, ctx: dict, weather: str, event: str) -> dict:
+    mn, o = ctx["menus"], ctx["orders"]
+    return {"weather": weather.strip() or DEFAULT_WEATHER, "event": event.strip() or DEFAULT_EVENT,
+            "weight_menu": (mn["high_weight"] or ["인기 메뉴"])[0],
+            "top_menu": (o["top_items"][0][0] if o["top_items"] else (mn["high_weight"] or ["인기 메뉴"])[0])}
+
+
+def template_sms(keywords, ctx: dict, weather: str = "", event: str = "") -> str:
+    """AI 키가 없을 때 쓰는 문구. 키워드별 한 문장을 이어 붙인다."""
+    f = _facts(keywords, ctx, weather, event)
+    parts = {
+        "날씨": f"{f['weather']}엔 따끈한 안주에 한잔 어때요?",
+        "행사": f"{f['event']}를 준비했어요.",
+        "가중치": f"요즘 추천 1순위 ‘{f['weight_menu']}’ 드셔보세요.",
+        "주문": f"지난 주문 감사해요. ‘{f['top_menu']}’ 또 드시러 오세요.",
+        "휴면": "오랜만이에요! 이번 주 방문하시면 안주 10% 할인해 드려요.",
+        "단골": "항상 찾아주셔서 감사해요. 방문 시 음료 1잔을 서비스로 드려요.",
+    }
+    return " ".join(parts[k] for k in keywords)
+
+
+def _ask_claude(keywords, ctx: dict, weather: str, event: str, api_key: str) -> str:
+    f = _facts(keywords, ctx, weather, event)
+    user = (f"키워드: {', '.join(keywords)}\n오늘 날씨: {f['weather']}\n행사: {f['event']}\n"
+            f"추천 가중치 높은 메뉴: {', '.join(ctx['menus']['high_weight'])}\n매장 현황: {context_to_text(ctx)}")
+    r = httpx.post("https://api.anthropic.com/v1/messages", timeout=15,
+                   headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
+                   json={"model": os.environ.get("ANTHROPIC_MODEL", "claude-haiku-5-5"), "max_tokens": 300,
+                         "system": SMS_PROMPT, "messages": [{"role": "user", "content": user}]})
+    r.raise_for_status()
+    return "".join(b.get("text", "") for b in r.json()["content"] if b.get("type") == "text").strip()
+
+
+def generate_sms(keywords, ctx: dict, weather: str = "", event: str = "") -> tuple[str, str]:
+    """(문구, 출처) 를 돌려준다. 출처는 'ai' 또는 'template'. ANTHROPIC_API_KEY 가 없거나 호출이 실패하면 템플릿."""
+    key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if key:
+        try:
+            text = _ask_claude(keywords, ctx, weather, event, key)
+            if text:
+                return text, "ai"
+        except (httpx.HTTPError, KeyError, ValueError):
+            pass
+    return template_sms(keywords, ctx, weather, event), "template"

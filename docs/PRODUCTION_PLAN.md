@@ -1,4 +1,4 @@
-# 정식 구현 계획: QR 로그인 · SENS 문자 발송
+# 정식 구현 계획: QR 로그인 · 솔라피 문자 발송
 
 더미(Streamlit 안에서만 동작)로 화면 흐름과 규칙을 확인했다. 이 문서는 더미를 정식 기능으로 바꾸는 기준이다.
 
@@ -56,7 +56,7 @@
 ### 회원 테이블 `members`
 `id, kakao_id(unique), nickname, phone, gender, birthday, mbti, marketing_consent(bool), marketing_consent_at, opted_out(bool), visit_count, last_visit_at, created_at`
 
-## 2. 문자 발송 (SENS)
+## 2. 문자 발송 (솔라피)
 
 ### API 계약
 | 메서드 | 경로 | 설명 |
@@ -67,17 +67,15 @@
 | GET | `/admin/api/marketing/sms/logs` | 발송 내역 |
 | POST | `/api/members/me/opt-out` | 수신거부 (손님/링크 용) |
 
-### 규칙 (`admin/sens_demo.py` 와 `admin/test_admin.py::SensDemoTests` 가 기준 명세)
+### 규칙
 - 90바이트 이하 SMS, 초과 LMS (한글 2바이트).
 - 본문 앞 `(광고)업체명`, 끝 무료수신거부 안내 자동 삽입.
 - 수신 동의 + 수신거부 아님인 회원만. 야간(21~08시) 차단. 월 한도 초과 시 차단.
 - 한도 값은 설정(`SMS_MONTHLY_LIMIT`, `LMS_MONTHLY_LIMIT`)으로 이동 — 더미의 50/10은 가정값.
-- `SMS_DRY_RUN=true` 이면 SENS 를 호출하지 않고 로그만 기록 (실제 키 없이 전체 흐름 테스트 가능).
+- `SMS_DRY_RUN=true` 이면 솔라피를 호출하지 않고 로그만 기록 (실제 키 없이 전체 흐름 테스트 가능).
 
-### SENS 호출 (v2)
-- `POST https://sens.apigw.ntruss.com/sms/v2/services/{serviceId}/messages`
-- 헤더 `x-ncp-apigw-timestamp`, `x-ncp-iam-access-key`, `x-ncp-apigw-signature-v2` (HMAC-SHA256: `POST {uri}\n{timestamp}\n{accessKey}`)
-- body `{type: SMS|LMS, from, content, messages:[{to}]}` — 한 번에 최대 건수 제한은 호출 전 콘솔 문서로 확인.
+### 솔라피 호출
+- `POST https://api.solapi.com/messages/v4/send-many/detail` (HMAC-SHA256 인증 헤더), 예약은 `scheduledDate`, 예약 취소는 `DELETE /messages/v4/groups/{groupId}/schedule`.
 
 ### 테이블
 `sms_logs(id, request_id, type, content, target_count, status, error, created_at)`, 월 사용량은 `sms_logs` 집계.
@@ -99,14 +97,13 @@
 - ⏳ [백엔드] 로그아웃/JWT 만료 정책 정의
 - ⏳ 휴대폰 번호를 직접 입력 대신 카카오 수집으로 바꾸려면 비즈 앱 심사 후 `kakao.py` 수정
 
-### 3-2. 문자 발송 (SENS)
-- ✅ 발송 규칙: SMS/LMS 분기, `(광고)` 표기·수신거부 문구 자동 추가, 월 한도, 야간 차단, 수신 동의·번호·수신거부 필터 (`backend/app/services/sens.py`)
-- ✅ SENS 호출: v2 서명(HMAC-SHA256), `contentType=AD`, 100명 단위 분할, 실패 시 `failed` 로그. `SMS_DRY_RUN=true`(기본)이면 호출 없이 기록만
+### 3-2. 문자 발송 (솔라피)
+- ✅ 발송 규칙: SMS/LMS 분기, `(광고)` 표기·수신거부 문구 자동 추가, 월 한도, 야간 차단, 수신 동의·번호·수신거부 필터 (`backend/app/services/sms.py`)
+- ✅ 솔라피 호출: send-many/detail, 예약 발송·취소, 실패 시 `failed` 로그. `SMS_DRY_RUN=true`(기본)이면 호출 없이 기록만
 - ✅ 발송 로그 `sms_logs`와 월 사용량 집계 (실패는 한도에서 제외)
 - ✅ API: `/admin/api/marketing/sms/{preview,send,usage,logs}`, `/admin/api/members/{id}/opt-out`, `/api/members/me/opt-out`
-- ✅ **[admin] 마케팅 화면 API 연동** (관리자 토큰 로그인, 사용량·미리보기·발송·수신거부·내역). 더미 `sens_demo.py` 제거
-- ✅ 테스트: `backend/tests/test_sms.py`(SENS 호출은 MockTransport), 통합 `tests/test_sms_admin_e2e.py`
-- ⏳ SENS 1회 호출당 수신자 수 상한(현재 100)을 콘솔 문서로 확인
+- ✅ **[admin] 마케팅 화면 API 연동** (관리자 토큰 로그인, 사용량·미리보기·발송·수신거부·내역).
+- ✅ 테스트: `backend/tests/test_sms.py`(솔라피 호출은 MockTransport), 통합 `tests/test_sms_admin_e2e.py`
 
 ### 3-2b. AI 질문 (회의록 2.4) — 더미 데이터 화면
 - ✅ 메뉴 화면 왼쪽 위 **[💬 AI 질문]** 버튼 → 한 화면에 질문 하나, 큰 선택 카드, 선택하면 바로 다음 질문 (진행 바·이전·닫기)
@@ -240,11 +237,10 @@ JWT_SECRET=<긴 랜덤 문자열>          # change-me 그대로 두지 말 것
 | 휴대폰에서 QR 주소가 열리지 않음 | `PUBLIC_BASE_URL` 이 `localhost` 로 되어 있음, 또는 다른 와이파이 |
 | 개발(HTTP)은 되는데 운영에서 실패 | 운영 도메인용 Redirect URL·카카오 앱 도메인 설정 누락 |
 
-### 네이버 클라우드 SENS (실제 발송 전까지)
-- [ ] 네이버 클라우드 가입·결제수단 등록, SENS 프로젝트 생성
-- [ ] 서비스 ID, Access Key, Secret Key 발급 → `.env`
-- [ ] 발신번호 등록·승인 (통신사 인증, 서류 필요할 수 있음)
-- [ ] 무료수신거부 번호 방식 확인 → `SENS_OPT_OUT_NUMBER`
+### 솔라피 (실제 발송 전까지)
+- [ ] 솔라피 가입, API Key·Secret 발급 → `.env`
+- [ ] 발신번호 등록·인증
+- [ ] 무료수신거부 번호 방식 확인 → `SMS_OPT_OUT_NUMBER`
 - [ ] 현재 무료 제공량·요금 확인 (한도 값 `SMS_MONTHLY_LIMIT`, `LMS_MONTHLY_LIMIT` 조정)
 
 ### 법무·정책
@@ -262,5 +258,5 @@ JWT_SECRET=<긴 랜덤 문자열>          # change-me 그대로 두지 말 것
 
 ## 6. 다음 순서
 1. 🙋 같은 와이파이 휴대폰으로 **모의 모드** 실기기 확인 (`PUBLIC_BASE_URL=http://서버PC주소:8000`, README 참고)
-2. 🙋 카카오·SENS 키 준비 → `.env`에 입력 → 실제 모드 전환 후 5장 체크리스트 수행 (SENS는 `SMS_DRY_RUN=false` 로 바꾸기 전에 본인 번호 1건부터)
+2. 🙋 카카오·솔라피 키 준비 → `.env`에 입력 → 실제 모드 전환 후 5장 체크리스트 수행 (솔라피는 `SMS_DRY_RUN=false` 로 바꾸기 전에 본인 번호 1건부터)
 3. ⏳ 3-3의 user 페이지 수정 사항 (요청 시)

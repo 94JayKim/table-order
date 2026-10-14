@@ -28,7 +28,7 @@ DATA_SOURCE=dummy streamlit run user/app.py                   # 서버 없이 �
 
 1. **요청 모델** 은 라우터 파일 위쪽에 pydantic 으로 (`routers/user.py` 의 `OrderIn` 참고).
 2. **라우터**: 손님용은 `routers/user.py`, 관리자용은 `routers/admin/` 안의 기능별 파일(`menus / orders / members / stats / sms / content`)에 `@router.get(...)` 로 추가합니다. 새 기능 파일을 만들면 `routers/admin/__init__.py` 의 목록에 등록합니다. 인증은 관리자 라우터에 이미 걸려 있고, 손님 로그인은 `Depends(current_member)` / `Depends(optional_member)`.
-3. **저장소**: DB 접근은 `stores/` 의 메서드로만 하고 라우터에서 SQL 을 쓰지 않습니다. 라우터에서는 `request.app.state.shop.xxx()` 로 부릅니다.
+3. **저장소**: 새 테이블이면 `stores/` 에 파일을 만들어 `SCHEMA` 와 메서드를 두고 `factory.py` 에 등록합니다(상점 데이터는 `shop_*.py` 의 해당 파일에 추가). DB 접근은 `stores/` 의 메서드로만 하고 라우터에서 SQL 을 쓰지 않습니다. 라우터에서는 `request.app.state.shop.xxx()` 로 부릅니다.
 4. **테스트**: `backend/tests/` 에 `client` 픽스처(`conftest.py`)로 추가.
 5. **오류 응답**: 일반 오류는 `HTTPException(상태코드, "한국어 메시지")`. 여러 문제를 한 번에 알려야 할 때만 `{"problems": [...]}` 를 쓰고, 화면에서 둘 다 처리합니다 (문자 발송이 예).
 
@@ -56,7 +56,7 @@ DATA_SOURCE=dummy streamlit run user/app.py                   # 서버 없이 �
 
 | 파일 | 같이 쓰는 담당 |
 |---|---|
-| `backend/app/stores/shop.py` (메뉴·주문·직원 호출·추천 기록 테이블) | C, D, E (+ B 통계) |
+| `backend/app/stores/shop_menus.py` / `shop_orders.py` / `shop_calls.py` / `shop_recommendations.py` (테이블별로 나뉨, `shop.py` 가 `ShopStore` 로 합침) | 메뉴·주문 D, 직원 호출 E, 추천 기록 C (+ B 통계) |
 | `backend/app/stores/content.py` 의 `NAMES`, `seed/content.json` | C, D, E |
 | `admin/admin_repository.py`, `admin/admin_dummy_data.py` | 전원 |
 | `backend/app/services/stats.py` | B, C |

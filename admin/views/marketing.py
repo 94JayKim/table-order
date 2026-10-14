@@ -31,6 +31,36 @@ def use_sms_template(name):
     ss["sms_body"], ss["sms_grades"] = body, grades
 
 
+def apply_ai_keywords(repo, keywords):
+    """키워드 버튼: 수신 등급을 지정하고 AI(키 없으면 템플릿)로 본문을 채운다."""
+    ctx = marketing_ai.build_context(repo, ss["grade_rule"])
+    body, source = marketing_ai.generate_sms(keywords, ctx, ss.get("ai_weather", ""), ss.get("ai_event", ""))
+    ss["sms_grades"], ss["sms_body"] = marketing_ai.keyword_grades(keywords), body
+    ss["ai_sms_note"] = (f"‘{marketing_ai.keyword_label(keywords)}’ 대상 "
+                         + ("AI가 문구를 만들었어요." if source == "ai" else "템플릿으로 문구를 만들었어요. (AI 키 미설정·호출 실패)"))
+
+
+def toggle_ai_panel():
+    ss["ai_sms_open"] = not ss.get("ai_sms_open", False)
+
+
+def ai_sms_panel(repo):
+    with st.container(border=True, key="ai_sms_panel"):
+        st.caption("키워드를 누르면 수신 등급이 자동 지정되고 문구가 작성란에 채워져요. 복합 키워드는 수신 대상이 겹치는 등급만 골라요.")
+        c1, c2 = st.columns(2)
+        c1.text_input("오늘 날씨 (선택)", key="ai_weather", placeholder=marketing_ai.DEFAULT_WEATHER)
+        c2.text_input("행사 내용 (선택)", key="ai_event", placeholder=marketing_ai.DEFAULT_EVENT)
+        combos = marketing_ai.keyword_combos()
+        for row in range(0, len(combos), 4):
+            cols = st.columns(4)
+            for col, kws in zip(cols, combos[row:row + 4]):
+                label = " + ".join(f"{marketing_ai.KEYWORD_ICON[k]}{k}" for k in kws)
+                col.button(label, key="aikw_" + "_".join(kws), width="stretch",
+                           on_click=apply_ai_keywords, args=(repo, kws))
+        if ss.get("ai_sms_note"):
+            st.caption("✅ " + ss["ai_sms_note"])
+
+
 def usage_card(label, used, limit):
     pct = min(100, used / limit * 100) if limit else 0
     tone = " hot" if pct >= 90 else ""
@@ -101,7 +131,12 @@ def marketing_dashboard(repo):
     st.caption("수신 동의·휴대폰 번호가 있는 회원에게만, 야간(21~08시) 제외, 월 무료 한도 안에서 발송합니다. "
                "서버 설정 `SMS_DRY_RUN=true` 이면 실제 문자는 전송되지 않고 기록만 남습니다.")
 
-    sec_title("문자 작성")
+    t_col, b_col = st.columns([5, 1], vertical_alignment="bottom")
+    with t_col:
+        sec_title("문자 작성")
+    b_col.button("✨ AI 문자 생성", key="ai_sms_toggle", on_click=toggle_ai_panel, width="stretch")
+    if ss.get("ai_sms_open"):
+        ai_sms_panel(repo)
     left, right = st.columns([3, 2], gap="large")
     with left:
         st.html('<div class="tpl-label">빠른 문구</div>')

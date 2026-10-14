@@ -187,6 +187,7 @@ button:focus-visible { outline: 3px solid rgba(232,89,12,.4) !important; outline
 .hrow:first-child { border-top: 0; }
 .ht { color: var(--ink-3); font-variant-numeric: tabular-nums; font-size: 12.5px; }
 .hmsg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.hsub { color: var(--muted, #6b7280); font-size: 12px; margin-top: 2px; }
 .herr { color: var(--bad); font-size: 12px; margin-top: 2px; }
 .hn { text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
 .tag { padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }

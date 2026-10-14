@@ -185,11 +185,11 @@ class DummyBackend:
             self._seed_sms_logs()
         used = {"SMS": 0, "LMS": 0}
         for log in self.sms_logs_:
-            if log["status"] in ("sent", "dry_run"):
+            if log["status"] in ("sent", "dry_run", "scheduled"):
                 used[log["type"]] += log["target_count"]
         return {"month": TODAY.strftime("%Y-%m"), "used": used, "limit": dict(self.SMS_LIMIT)}
 
-    def sms_preview(self, grades: list, body: str) -> dict:
+    def sms_preview(self, grades: list, body: str, scheduled_at=None) -> dict:
         text = f"(광고){self.STORE_NAME}\n{body.strip()}\n무료수신거부 {self.OPT_OUT_NUMBER}"
         size = sum(1 if ord(ch) < 128 else 2 for ch in text)
         kind = "SMS" if size <= 90 else "LMS"
@@ -203,19 +203,30 @@ class DummyBackend:
             problems.append("발송 대상이 없습니다. (휴대폰 번호 입력 + 수신 동의 + 수신거부 아님)")
         if len(targets) > remaining:
             problems.append(f"이번 달 {kind} 무료 잔여 {max(remaining, 0)}건보다 대상({len(targets)}명)이 많습니다.")
+        if scheduled_at and scheduled_at.replace(tzinfo=None) < datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None) + timedelta(minutes=10):
+            problems.append("예약 시각은 지금부터 10분 이후여야 합니다.")
         # 야간(21~08시) 제한은 데모에서는 적용하지 않는다 (서버는 적용)
         return {"type": kind, "bytes": size, "content": text, "targets": len(targets), "remaining": remaining,
-                "problems": problems, "ok": not problems, "dry_run": True}
+                "problems": problems, "ok": not problems, "dry_run": True,
+                "scheduled_at": scheduled_at.isoformat() if scheduled_at else None}
 
-    def sms_send(self, grades: list, body: str) -> dict:
-        plan = self.sms_preview(grades, body)
+    def sms_send(self, grades: list, body: str, scheduled_at=None) -> dict:
+        plan = self.sms_preview(grades, body, scheduled_at)
         if not plan["ok"]:
             raise Unsupported("; ".join(plan["problems"]))
         rid = f"dryrun-{len(self.sms_logs_) + 1:04d}"
         self.sms_logs_.insert(0, {"id": len(self.sms_logs_) + 1, "ts": _iso(datetime.now(timezone.utc)),
                                   "month": TODAY.strftime("%Y-%m"), "request_id": rid, "type": plan["type"],
-                                  "content": plan["content"], "target_count": plan["targets"], "status": "dry_run", "error": None})
-        return {"request_id": rid, "count": plan["targets"], "dry_run": True}
+                                  "content": plan["content"], "target_count": plan["targets"], "error": None,
+                                  "status": "scheduled" if scheduled_at else "dry_run", "scheduled_at": plan["scheduled_at"]})
+        return {"request_id": rid, "count": plan["targets"], "dry_run": True, "scheduled_at": plan["scheduled_at"]}
+
+    def sms_cancel(self, log_id: int) -> dict:
+        log = next((x for x in self.sms_logs_ if x["id"] == log_id), None)
+        if log is None or log["status"] != "scheduled":
+            raise Unsupported("예약 상태의 문자만 취소할 수 있습니다.")
+        log["status"] = "canceled"
+        return dict(log)
 
     def sms_logs(self) -> list:
         self.sms_usage()

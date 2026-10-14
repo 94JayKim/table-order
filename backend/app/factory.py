@@ -7,7 +7,7 @@ from app.core.settings import Settings, get_settings
 from app.routers import admin, auth, user
 from app.services.kakao import KakaoClient
 from app.services.supabase_auth import SupabaseAuthClient
-from app.services.sens import SmsService
+from app.services.sms import SmsService
 from app.stores.content import ContentStore
 from app.stores.db import Database
 from app.stores.login_sessions import LoginSessionStore

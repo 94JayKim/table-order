@@ -176,9 +176,10 @@ class DummyBackend:
                           for i, (day, kind, text, n, status, err) in enumerate(rows, 1)]
         self.sms_logs_.reverse()  # 서버처럼 최신 기록이 먼저
 
-    def _sms_targets(self, grades):
+    def _sms_targets(self, grades, member_ids=None):
         return [m for m in self.members_ if m["marketing_consent"] and not m["opted_out"]
-                and _grade(m["visit_count"], m["last_visit"], self.GRADE_RULE) in grades]
+                and _grade(m["visit_count"], m["last_visit"], self.GRADE_RULE) in grades
+                and (member_ids is None or m["id"] in member_ids)]
 
     def sms_usage(self) -> dict:
         if not hasattr(self, "sms_logs_"):
@@ -189,13 +190,13 @@ class DummyBackend:
                 used[log["type"]] += log["target_count"]
         return {"month": TODAY.strftime("%Y-%m"), "used": used, "limit": dict(self.SMS_LIMIT)}
 
-    def sms_preview(self, grades: list, body: str, scheduled_at=None) -> dict:
+    def sms_preview(self, grades: list, body: str, scheduled_at=None, member_ids=None) -> dict:
         text = f"(광고){self.STORE_NAME}\n{body.strip()}\n무료수신거부 {self.OPT_OUT_NUMBER}"
         size = sum(1 if ord(ch) < 128 else 2 for ch in text)
         kind = "SMS" if size <= 90 else "LMS"
         usage = self.sms_usage()
         remaining = usage["limit"][kind] - usage["used"][kind]
-        targets = self._sms_targets(grades)
+        targets = self._sms_targets(grades, member_ids)
         problems = []
         if not body.strip():
             problems.append("본문이 비어 있습니다.")
@@ -210,8 +211,8 @@ class DummyBackend:
                 "problems": problems, "ok": not problems, "dry_run": True,
                 "scheduled_at": scheduled_at.isoformat() if scheduled_at else None}
 
-    def sms_send(self, grades: list, body: str, scheduled_at=None) -> dict:
-        plan = self.sms_preview(grades, body, scheduled_at)
+    def sms_send(self, grades: list, body: str, scheduled_at=None, member_ids=None) -> dict:
+        plan = self.sms_preview(grades, body, scheduled_at, member_ids)
         if not plan["ok"]:
             raise Unsupported("; ".join(plan["problems"]))
         rid = f"dryrun-{len(self.sms_logs_) + 1:04d}"

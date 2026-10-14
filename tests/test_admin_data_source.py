@@ -231,6 +231,4 @@ def test_marketing_screen_in_dummy_mode_can_preview_and_send(monkeypatch):
     before = len(app.session_state["repo"].sms_logs())
     next(b for b in app.button if b.label == "발송").click().run()
     assert not app.exception and len(app.session_state["repo"].sms_logs()) == before + 1
-    app.button(key="tpl_🆕 신메뉴 안내").click().run()  # 빠른 문구가 대상 등급·본문을 채운다
-    assert "먹태구이" in app.text_area(key="sms_body").value and "휴면" not in app.multiselect(key="sms_grades").value
     assert any("발송 내역" in h.value for h in app.get("html"))

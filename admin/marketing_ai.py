@@ -10,6 +10,7 @@
 import os
 from collections import Counter
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 from itertools import combinations
 
 import httpx
@@ -265,3 +266,19 @@ def generate_sms(keywords, ctx: dict, weather: str = "", event: str = "") -> tup
         except (httpx.HTTPError, KeyError, ValueError):
             pass
     return template_sms(keywords, ctx, weather, event), "template"
+
+
+CANDIDATE_ORDER = [("휴면",), ("단골",), ("주문", "단골"), ("날씨", "주문"), ("행사",), ("가중치", "주문"), ("날씨", "행사"), ("주문",)]
+
+
+def suggest_candidates(ctx: dict, weather: str = "", event: str = "", n: int = 5) -> list[dict]:
+    """AI 문자 생성 버튼용 후보 n개. 각 후보 = 키워드 + 수신 등급 + 문구. 수신 가능 회원이 없는 등급 조합은 건너뛴다."""
+    pool = ctx["members"]["pool_by_grade"]
+    picks = [kw for kw in CANDIDATE_ORDER
+             if any(pool.get(g, 0) for g in keyword_grades(kw))][:n]
+
+    def make(kw):
+        body, source = generate_sms(kw, ctx, weather, event)
+        return {"keywords": list(kw), "grades": keyword_grades(kw), "body": body, "source": source}
+    with ThreadPoolExecutor(max_workers=max(1, len(picks))) as ex:
+        return list(ex.map(make, picks))

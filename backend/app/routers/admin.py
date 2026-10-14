@@ -39,6 +39,7 @@ class MenuIn(BaseModel):
 
 class SmsIn(BaseModel):
     grades: list[str] = Field(min_length=1)
+    member_ids: list[int] | None = None  # 주면 등급 대상 중 이 회원들로만 좁힌다(대상 목록 수동 수정)
     body: str
     scheduled_at: datetime | None = None  # 예약 발송 시각 (시간대 없으면 KST)
 
@@ -139,14 +140,14 @@ async def sms_usage(request: Request):
 @router.post("/marketing/sms/preview")
 async def sms_preview(body: SmsIn, request: Request):
     _check_grades(body.grades)
-    return _sms(request).preview(body.grades, body.body, body.scheduled_at)
+    return _sms(request).preview(body.grades, body.body, body.scheduled_at, body.member_ids)
 
 
 @router.post("/marketing/sms/send")
 def sms_send(body: SmsIn, request: Request):
     _check_grades(body.grades)
     try:
-        return _sms(request).send(body.grades, body.body, body.scheduled_at)
+        return _sms(request).send(body.grades, body.body, body.scheduled_at, body.member_ids)
     except SmsRejected as e:
         raise HTTPException(409, {"problems": e.problems})
 

@@ -94,11 +94,11 @@ class ApiBackend:
     def sms_usage(self):
         return api.get(f"{ENDPOINTS['sms']}/usage", self.token)
 
-    def sms_preview(self, grades, body, scheduled_at=None):
-        return api.post(f"{ENDPOINTS['sms']}/preview", self.token, json=_sms_body(grades, body, scheduled_at))
+    def sms_preview(self, grades, body, scheduled_at=None, member_ids=None):
+        return api.post(f"{ENDPOINTS['sms']}/preview", self.token, json=_sms_body(grades, body, scheduled_at, member_ids))
 
-    def sms_send(self, grades, body, scheduled_at=None):
-        return api.post(f"{ENDPOINTS['sms']}/send", self.token, json=_sms_body(grades, body, scheduled_at))
+    def sms_send(self, grades, body, scheduled_at=None, member_ids=None):
+        return api.post(f"{ENDPOINTS['sms']}/send", self.token, json=_sms_body(grades, body, scheduled_at, member_ids))
 
     def sms_cancel(self, log_id):
         return api.post(f"{ENDPOINTS['sms']}/logs/{log_id}/cancel", self.token)
@@ -110,8 +110,10 @@ class ApiBackend:
         return api.post(ENDPOINTS["opt_out"].format(id=member_id), self.token)
 
 
-def _sms_body(grades, body, scheduled_at) -> dict:
+def _sms_body(grades, body, scheduled_at, member_ids=None) -> dict:
     data = {"grades": grades, "body": body}
+    if member_ids is not None:
+        data["member_ids"] = [int(i) for i in member_ids]
     if scheduled_at:
         data["scheduled_at"] = scheduled_at.isoformat()  # 시간대 없으면 서버가 KST 로 본다
     return data

@@ -1,0 +1,63 @@
+# 개발 가이드 (팀원용)
+
+각자 맡은 API 를 만들 때 따라 할 순서와 약속을 모았습니다. 실행 방법은 `README.md` 를 먼저 보세요.
+
+## 0. 시작하기 (DB·서버 없이)
+
+```bash
+uv venv .venv && uv pip install -r requirements.txt          # 화면용 (macOS/Linux: source .venv/bin/activate)
+DATA_SOURCE=dummy streamlit run user/app.py                   # 서버 없이 더미로 화면 확인
+(cd backend && uv sync && uv run fastapi dev main.py)        # 서버. DB 는 app.db(SQLite)가 자동 생성
+```
+
+- 통합 테스트(`python -m pytest tests`)는 화면용 + 서버용 의존성이 둘 다 필요합니다 (`requirements.txt`, `backend/pyproject.toml`).
+- DB 는 지금 SQLite 파일(`backend/app.db`)입니다. 테이블 구조는 `backend/app/stores/*.py` 위쪽 `SCHEMA` 에 있고 **`CREATE TABLE IF NOT EXISTS` 라서 컬럼을 바꿔도 기존 `app.db` 에는 반영되지 않습니다. 스키마를 바꾼 사람은 PR 에 적고, 모두 `backend/app.db` 를 지운 뒤 서버를 다시 켭니다.** (운영 DB 로 옮길 때 SQL 은 `stores/` 안에만 있으므로 그 파일들만 고치면 됩니다.)
+
+## 1. API 경로 규칙
+
+현재 코드의 규칙을 기준으로 합니다.
+
+| 구분 | 코드 경로 | 분배서(`FBGrowth_API_담당_분배`)의 표기 |
+|---|---|---|
+| 손님 | `/api/...` | `/api/v1/...` |
+| 관리자 | `/admin/api/...` | `/api/admin/...`, `/api/v1/owner/...` |
+
+분배서의 `/api/v1`, `/api/admin`, `/api/v1/owner` 는 기획용 이름이고, 구현은 위 코드 경로로 합니다. 경로를 바꾸기로 하면 팀이 같이 정하고 이 표를 먼저 고치세요.
+
+## 2. 서버에 API 하나 추가하기
+
+1. **요청 모델** 은 라우터 파일 위쪽에 pydantic 으로 (`routers/user.py` 의 `OrderIn` 참고).
+2. **라우터**: 손님용은 `routers/user.py`, 관리자용은 `routers/admin/` 안의 기능별 파일(`menus / orders / members / stats / sms / content`)에 `@router.get(...)` 로 추가합니다. 새 기능 파일을 만들면 `routers/admin/__init__.py` 의 목록에 등록합니다. 인증은 관리자 라우터에 이미 걸려 있고, 손님 로그인은 `Depends(current_member)` / `Depends(optional_member)`.
+3. **저장소**: DB 접근은 `stores/` 의 메서드로만 하고 라우터에서 SQL 을 쓰지 않습니다. 라우터에서는 `request.app.state.shop.xxx()` 로 부릅니다.
+4. **테스트**: `backend/tests/` 에 `client` 픽스처(`conftest.py`)로 추가.
+5. **오류 응답**: 일반 오류는 `HTTPException(상태코드, "한국어 메시지")`. 여러 문제를 한 번에 알려야 할 때만 `{"problems": [...]}` 를 쓰고, 화면에서 둘 다 처리합니다 (문자 발송이 예).
+
+## 3. 화면에서 그 API 쓰기
+
+화면 코드(`views/`, `ui/`, `state/`)는 `api` 를 직접 부르지 않고 저장소만 부릅니다.
+
+- **user**: `user/user_repository.py`
+  1. `ENDPOINTS` 에 경로 추가 → 2. `ApiRepository` 에 메서드 추가 → 3. `DummyRepository`·`AutoRepository` 에도 같은 이름의 메서드 추가(더미는 `None` 또는 더미 값).
+  - 예외: QR 로그인·프로필·수신거부는 `user/server.py` 가 직접 호출합니다(서버가 없으면 `None` 을 돌려 해당 기능만 꺼짐). 새 로그인 관련 호출은 `server.py` 에, 그 밖의 데이터는 `user_repository.py` 에 추가합니다.
+- **admin**: `admin/admin_repository.py`
+  1. `ENDPOINTS` 에 경로 → 2. `ApiBackend` 에 메서드(서버 JSON 그대로 반환) → 3. `admin/admin_dummy_data.py` 의 `DummyBackend` 에 같은 이름·같은 JSON 모양의 메서드 → 4. 화면용 표로 바꾸는 일은 `AdminRepository` 에.
+  - 더미와 서버의 모양이 같은지는 `tests/test_admin_data_source.py` 가 확인합니다.
+- 더미 파일이 곧 응답 명세입니다. 서버 응답은 더미와 같은 JSON 모양으로 맞추세요.
+
+## 4. import 규칙
+
+- 저장소 루트를 `sys.path` 에 추가하는 코드가 각 진입점에 있습니다 (`admin/app.py`, `user/app.py` 등).
+- 화면 폴더 안 모듈은 루트 기준으로 씁니다: `from user.state.cart import ...`, `from admin.ui.widgets import ...`.
+- 예전부터 있는 최상위 모듈(`admin_repository`, `user_repository`, `server`, `menu_data` 등)은 폴더 이름 없이 `import admin_repository` 로 부릅니다. 새 모듈은 `views/ui/state` 안에 두고 루트 기준 import 를 쓰세요.
+
+## 5. 여러 명이 같이 고치는 파일
+
+충돌이 잦은 곳이니 작은 PR 로 자주 합치고, 같은 파일을 고치는 사람끼리 미리 알려 주세요.
+
+| 파일 | 같이 쓰는 담당 |
+|---|---|
+| `backend/app/stores/shop.py` (메뉴·주문·직원 호출·추천 기록 테이블) | C, D, E (+ B 통계) |
+| `backend/app/stores/content.py` 의 `NAMES`, `seed/content.json` | C, D, E |
+| `admin/admin_repository.py`, `admin/admin_dummy_data.py` | 전원 |
+| `backend/app/services/stats.py` | B, C |
+| 주문 테이블 스키마 | B, D (바꾸면 서로 알리기) |

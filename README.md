@@ -23,7 +23,8 @@ shared/    두 페이지가 같이 쓰는 API 호출 코드
 
 - `admin/`: `views/`(대시보드·메뉴·가중치·이벤트·고객·주문·직원호출·마케팅·로그인), `ui/widgets.py`
 - `user/`: `views/`(splash·order·ai), `ui/`(common·cart·dialogs·login·roulette), `state/`(session·cart·login·roulette·quiz·context)
-- 새 모듈은 저장소 루트 기준으로 `from user.state.cart import ...`, `from admin.ui.widgets import ...` 처럼 import 합니다.
+- 새 모듈은 저장소 루트 기준으로 `from user.state.cart import ...`, `from admin.ui.widgets import ...` 처럼 import 합니다. (예전부터 있는 `admin_repository`, `user_repository`, `server` 등 최상위 모듈은 폴더 이름 없이 import 합니다. 자세한 규칙은 `docs/DEVELOPMENT_GUIDE.md`)
+- 서버 관리자 API 는 `backend/app/routers/admin/` 안에 기능별 파일(menus·orders·members·stats·sms·content)로 나뉘어 있습니다.
 
 ## 실행
 
@@ -36,7 +37,7 @@ uv run fastapi dev main.py
 
 # 페이지 (저장소 루트에서, 서버가 켜져 있어야 QR 로그인·문자 발송이 동작)
 uv venv .venv
-source .venv/Scripts/activate
+source .venv/Scripts/activate   # macOS/Linux 는 source .venv/bin/activate
 uv pip install -r requirements.txt
 streamlit run user/app.py --server.port 8501    # 사용자 (?table=12 로 테이블 지정)
 streamlit run admin/app.py --server.port 8502   # 관리자 (현재 토큰 입력 생략. 끄려면 ADMIN_SKIP_TOKEN=0, 토큰은 ADMIN_TOKEN)
@@ -54,6 +55,7 @@ streamlit run admin/app.py --server.port 8502   # 관리자 (현재 토큰 입�
   ```
   `SMS_DRY_RUN=true` 면 실제 전송 없이 기록만, 실패 시 409 + `{"detail": {"ok": false, "problems": [...]}}`.
 - 자세한 계획과 체크리스트: `docs/PRODUCTION_PLAN.md`
+- 팀원용 개발 가이드(새 API 추가 순서, 경로 규칙, DB 스키마 변경 규칙): `docs/DEVELOPMENT_GUIDE.md`
 
 ## Streamlit Community Cloud 배포 (user·admin 각각)
 

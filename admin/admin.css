@@ -149,25 +149,6 @@ button:focus-visible { outline: 3px solid rgba(232,89,12,.4) !important; outline
 .kpis { margin-top: 18px; }
 .page-head + div .kpis, [data-testid="stHtml"]:first-child .kpis { margin-top: 0; }
 
-/* ---------- 추천 가중치: 주문 화면처럼 사진 카드 ---------- */
-.st-key-wgrid { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px !important; margin-top: 8px; }
-.st-key-wgrid > [data-testid="stLayoutWrapper"] { width: 100% !important; height: 100%; }
-[class*="st-key-wcard_"] { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px; gap: 8px; box-shadow: var(--shadow); height: 100%; transition: border-color .15s, transform .15s; }
-[class*="st-key-wcard_"]:hover { border-color: #f3b58a; transform: translateY(-1px); }
-.wthumb { position: relative; height: 128px; border-radius: 10px; overflow: hidden; display: grid; place-items: center; font-size: 58px; }
-.wthumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.wthumb .soldout { position: absolute; inset: 0; background: rgba(29,27,25,.55); display: grid; place-items: center; color: #fff; font-size: 18px; font-weight: 800; }
-.wname { font-size: 15px; font-weight: 800; line-height: 1.4; margin-top: 4px; overflow-wrap: anywhere; min-height: 42px; }
-.wprice { color: var(--ink-3); font-size: 13px; font-weight: 600; }
-[class*="st-key-wcard_"] [data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; gap: 6px; }
-[class*="st-key-wcard_"] [data-testid="stColumn"] { min-width: 0; }
-[class*="st-key-wcard_"] button { min-height: 40px; padding: 0; }
-[class*="st-key-wcard_"] button p { font-size: 20px; font-weight: 800; line-height: 1; }
-.wval { text-align: center; line-height: 1.1; }
-.wval b { display: block; font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.wval small { display: block; margin-top: 3px; color: var(--ink-3); font-size: 11px; }
-.wval.changed b { color: var(--brand-ink); }
-
 /* ---------- 마케팅 ---------- */
 .meter { height: 8px; border-radius: 999px; background: var(--line-soft); margin-top: 12px; overflow: hidden; }
 .meter i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #ffa94d, var(--brand)); }
@@ -187,6 +168,7 @@ button:focus-visible { outline: 3px solid rgba(232,89,12,.4) !important; outline
 .hrow:first-child { border-top: 0; }
 .ht { color: var(--ink-3); font-variant-numeric: tabular-nums; font-size: 12.5px; }
 .hmsg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.hsub { color: var(--muted, #6b7280); font-size: 12px; margin-top: 2px; }
 .herr { color: var(--bad); font-size: 12px; margin-top: 2px; }
 .hn { text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
 .tag { padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }

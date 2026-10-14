@@ -61,3 +61,44 @@ def test_switching_tab_updates_url():
     app = open_marketing()
     app.radio(key="mk_tab").set_value("AI").run()
     assert app.query_params["tab"] == "AI"
+
+
+def test_keyword_recipients_and_combos():
+    assert marketing_ai.keyword_grades(["휴면"]) == ["휴면"]
+    assert marketing_ai.keyword_grades(["주문", "단골"]) == ["단골"]
+    assert marketing_ai.keyword_grades(["휴면", "단골"]) == []  # 교집합이 비면 빈 목록
+    combos = marketing_ai.keyword_combos()
+    assert ("휴면", "단골") not in combos and ("주문", "단골") in combos
+    assert all(marketing_ai.keyword_grades(c) for c in combos)
+
+
+def test_generate_sms_falls_back_to_template(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    repo = repo_mod.connect("change-me").repo
+    ctx = marketing_ai.build_context(repo, repo_mod.DEFAULT_RULE)
+    text, source = marketing_ai.generate_sms(["날씨", "행사"], ctx, weather="비 오는 날", event="치맥 데이")
+    assert source == "template" and "비 오는 날" in text and "치맥 데이" in text
+
+
+def test_generate_sms_uses_ai_and_survives_failure(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    ctx = marketing_ai.build_context(repo_mod.connect("change-me").repo, repo_mod.DEFAULT_RULE)
+    monkeypatch.setattr(marketing_ai, "_ask_claude", lambda *a: "AI 문구")
+    assert marketing_ai.generate_sms(["주문"], ctx) == ("AI 문구", "ai")
+
+    def boom(*a):
+        raise marketing_ai.httpx.ConnectError("x")
+    monkeypatch.setattr(marketing_ai, "_ask_claude", boom)
+    assert marketing_ai.generate_sms(["주문"], ctx)[1] == "template"
+
+
+def test_ai_sms_button_fills_recipients_and_body(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    app = open_marketing()
+    app.button(key="ai_sms_toggle").click().run()
+    app.button(key="aikw_휴면").click().run()
+    assert not app.exception
+    assert app.multiselect(key="sms_grades").value == ["휴면"]
+    assert "10% 할인" in app.text_area(key="sms_body").value
+    app.button(key="aikw_주문_단골").click().run()
+    assert app.multiselect(key="sms_grades").value == ["단골"]

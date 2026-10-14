@@ -9,6 +9,22 @@ admin/     관리자 Streamlit 페이지
 shared/    두 페이지가 같이 쓰는 API 호출 코드
 ```
 
+### 화면 코드 구조 (user·admin 공통 규칙)
+
+`app.py` 는 진입점(로그인·메뉴 선택·화면 연결)만 맡고, 화면 코드는 역할별 폴더로 나눕니다.
+폴더 이름이 `pages` 가 아니라 `views` 인 이유는 Streamlit 이 `pages/` 폴더를 자동 멀티페이지로 인식하기 때문입니다.
+
+| 폴더 | 역할 | 백엔드의 대응 계층 |
+|---|---|---|
+| `views/` | 화면 하나를 조립하는 함수 (`page_*`, `render_*`) | `routers/` |
+| `ui/` | 여러 화면이 같이 쓰는 UI 조각·다이얼로그 | - |
+| `state/` | `st.session_state` 조작과 계산 (장바구니·로그인·퀴즈 등), `context.py` 는 매장 데이터 | `services/` |
+| `shared/api.py`, `*_repository.py` | 서버/더미 데이터 호출 | `stores/` |
+
+- `admin/`: `views/`(대시보드·메뉴·가중치·고객·주문·마케팅·로그인), `ui/widgets.py`
+- `user/`: `views/`(splash·order·ai), `ui/`(common·cart·dialogs·login·roulette), `state/`(session·cart·login·roulette·quiz·context)
+- 새 모듈은 저장소 루트 기준으로 `from user.state.cart import ...`, `from admin.ui.widgets import ...` 처럼 import 합니다.
+
 ## 실행
 
 ```bash

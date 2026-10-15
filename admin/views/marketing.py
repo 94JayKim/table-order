@@ -14,8 +14,6 @@ from admin_repository import GRADES
 
 ss = st.session_state
 
-MARKETING_TABS = ["대시보드", "AI"]
-
 
 STATUS_LABEL = {"sent": ("발송됨", "ok"), "dry_run": ("테스트(DRY RUN)", "warn"), "failed": ("실패", "bad"),
                 "scheduled": ("예약됨", "ok"), "canceled": ("취소됨", "warn")}
@@ -229,12 +227,7 @@ def marketing_ai_tab(repo):
             box.chat_message(msg["role"]).write(msg["content"])
 
 
-def page_marketing(repo):
+def page_marketing(repo, tab="문자"):
+    """문자 / AI 탭은 사이드바 하위 메뉴에서 고른다 (admin/app.py 의 SUBPAGES)."""
     page_head("마케팅", "수신 동의한 회원에게 문자를 보내 재방문을 이끌어요")
-    # 새로고침해도 보던 탭이 유지되도록 URL(?tab=...)에 저장하고 거기서 복원한다.
-    if "mk_tab" not in ss:
-        ss["mk_tab"] = st.query_params["tab"] if st.query_params.get("tab") in MARKETING_TABS else MARKETING_TABS[0]
-    tab = st.radio("마케팅 탭", MARKETING_TABS, key="mk_tab", horizontal=True, label_visibility="collapsed")
-    if st.query_params.get("tab") != tab:
-        st.query_params["tab"] = tab
-    {"대시보드": marketing_dashboard, "AI": marketing_ai_tab}[tab](repo)
+    {"문자": marketing_dashboard, "AI": marketing_ai_tab}[tab](repo)

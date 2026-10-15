@@ -441,3 +441,11 @@ button:focus-visible { outline: 3px solid #ffcf54 !important; outline-offset: 3p
 @media (min-width: 761px) and (max-height: 900px) {
   .rw-title .fork, .rw-title .q, .rw-title .s { display: none; }
 }
+
+/* 불필요한 여백 줄이기 */
+@media (min-width: 761px) {
+  .st-key-header { padding-bottom: 12px; }
+  .section-title, .ai-results-title { margin-top: 4px; margin-bottom: 8px; }
+  [class*="st-key-card_"] { gap: 8px; padding: 10px; }
+  .thumb { height: 150px; }
+}

@@ -265,3 +265,14 @@ button:focus-visible { outline: 3px solid rgba(232,89,12,.4) !important; outline
   [class*="st-key-mcat_"] button { min-height: 40px; padding: 4px 8px; }
   [class*="st-key-mcat_"] button p { font-size: 13px; }
 }
+
+/* 불필요한 여백 줄이기 */
+@media (min-width: 901px) {
+  [data-testid="stMain"] [data-testid="stVerticalBlock"] { gap: .45rem; }
+  .sec-title { margin: 6px 0 2px; }
+  .mmenu-head + .sec-title, [data-testid="stElementContainer"]:has(.mmenu-head) + [data-testid="stElementContainer"] .sec-title { margin-top: 0; }
+  .panel .hint { margin-bottom: 8px; }
+  .page-head { margin-bottom: 6px; }
+  [data-testid="stCaptionContainer"] { margin: 0; line-height: 1.4; }
+  [data-testid="stForm"] { padding: 14px; }
+}

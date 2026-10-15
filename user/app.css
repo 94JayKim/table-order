@@ -26,6 +26,7 @@ button:focus-visible { outline: 3px solid #ffcf54 !important; outline-offset: 3p
 .brand .logo { flex: 0 0 48px; width: 48px; height: 48px; border-radius: 14px; background: linear-gradient(135deg,#ffb703,#e63946); display: flex; align-items: center; justify-content: center; font-size: 28px; }
 .brand .name { font-size: 24px; font-weight: 900; letter-spacing: -.5px; line-height: 1.3; word-break: keep-all; }
 .brand .sub { font-size: 13px; color: #a8a8b2; margin-top: 3px; }
+.splash-brand { justify-content: center; margin: 8px 0 4px; }
 .table-chip { background: #26262b; border: 1px solid #3a3a42; border-radius: 999px; padding: 8px 12px; font-weight: 800; font-size: 14px; text-align: center; white-space: nowrap; }
 .table-chip b { color: #ffb703; }
 

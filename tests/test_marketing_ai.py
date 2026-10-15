@@ -79,6 +79,27 @@ def test_sidebar_shows_tabs_as_sub_items_and_parent_opens_first_one():
     assert "tab" not in app.query_params
 
 
+def test_rerecommend_cycles_through_recommendations():
+    from admin.views.marketing import pick_recommendations
+    recs = [{"title": str(i)} for i in range(7)]
+    first, p1, pages = pick_recommendations(recs, 0)
+    second, p2, _ = pick_recommendations(recs, 1)
+    assert pages == 2 and (p1, p2) == (1, 2)
+    assert [r["title"] for r in first] == ["0", "1", "2", "3"]
+    assert [r["title"] for r in second] == ["4", "5", "6", "0"]
+    assert pick_recommendations(recs, 2)[0] == first  # 끝까지 보면 처음으로
+    assert pick_recommendations(recs[:2], 5)[2] == 1
+
+
+def test_rerecommend_button_changes_cards():
+    app = open_marketing("AI")
+    before = [h.value for h in app.get("html") if 'class="recs"' in h.value]
+    app.button(key="mk_rerecommend").click().run()
+    after = [h.value for h in app.get("html") if 'class="recs"' in h.value]
+    assert not app.exception and before and after and before != after
+    assert app.session_state["mk_rec_round"] == 1
+
+
 def test_keyword_recipients_and_combos():
     assert marketing_ai.keyword_grades(["휴면"]) == ["휴면"]
     assert marketing_ai.keyword_grades(["주문", "단골"]) == ["단골"]

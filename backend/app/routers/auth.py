@@ -83,7 +83,7 @@ def _consent_page(token: str) -> HTMLResponse:
         '<input type="checkbox" name="agree" value="1" style="width:22px;height:22px;flex:none">'
         '<span>(선택) 쿠폰·이벤트 등 광고성 문자 수신에 동의합니다.</span></label>'
         '<p style="color:#777;font-size:13px;margin:0 0 24px">※ 임시 문구입니다. 정식 서비스 전에 개인정보 처리방침과 동의 문구를 확정해야 해요. '
-        '동의하지 않아도 로그인할 수 있어요. 광고 문자는 21시~08시에는 보내지 않고, 문자 하단 안내로 언제든 수신을 거부할 수 있어요. '
+        '동의하지 않아도 로그인할 수 있고, 이전에 동의하셨다면 다시 체크하지 않아도 유지돼요. 광고 문자는 21시~08시에는 보내지 않고, 문자 하단 안내로 언제든 수신을 거부할 수 있어요. '
         '로그인하면 카카오 계정의 성별·생일·휴대폰 번호(동의한 항목)를 함께 가져옵니다.</p>'
         '<button style="width:100%;font-size:18px;padding:12px;background:#fee500;border:0;border-radius:8px">'
         '카카오로 계속하기</button></form></body>')
@@ -131,8 +131,9 @@ async def kakao_callback(request: Request, state: str, code: str = "", error: st
         profile = await app.state.kakao.fetch_profile(code)
     except KakaoError as e:
         return _page("카카오 로그인에 실패했어요", html.escape(str(e)), 502)
-    member = app.state.members.set_marketing_consent(
-        app.state.members.upsert_login(**profile)["id"], s.marketing_consent)
+    member = app.state.members.upsert_login(**profile)
+    if s.marketing_consent:  # 체크하지 않았다고 이전 동의를 지우지 않는다 (철회는 수신거부로)
+        member = app.state.members.set_marketing_consent(member["id"], True)
     access = tokens.issue(member["id"], settings.jwt_secret, settings.jwt_expire_minutes)
     if not store.complete(s, _public_member(member), access):
         return _page("로그인할 수 없어요", "QR이 만료되었습니다.", 410)
@@ -155,8 +156,9 @@ async def supabase_callback(state: str, request: Request, code: str = "", error:
         profile = await app.state.supabase.fetch_profile(code, verifier)
     except SupabaseAuthError as e:
         return _page("카카오 로그인에 실패했어요", html.escape(str(e)), 502)
-    member = app.state.members.set_marketing_consent(
-        app.state.members.upsert_login(**profile)["id"], s.marketing_consent)
+    member = app.state.members.upsert_login(**profile)
+    if s.marketing_consent:  # 체크하지 않았다고 이전 동의를 지우지 않는다 (철회는 수신거부로)
+        member = app.state.members.set_marketing_consent(member["id"], True)
     access = tokens.issue(member["id"], settings.jwt_secret, settings.jwt_expire_minutes)
     if not store.complete(s, _public_member(member), access):
         return _page("로그인할 수 없어요", "QR이 만료되었습니다.", 410)

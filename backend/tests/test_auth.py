@@ -98,14 +98,18 @@ def test_returning_member_and_consent_at_login():
         assert c.get("/api/members/me", headers={"Authorization": "Bearer bad"}).status_code == 401
 
 
-def test_consent_defaults_to_no_and_latest_choice_wins():
+def test_consent_defaults_to_no_and_is_kept_on_relogin():
     with TestClient(make()) as c:
         def once(agree):
             q = c.post("/api/auth/qr", json={"table_no": 1}).json()
             scan_and_login(c, q["token"], "손님", agree=agree)
             h = {"Authorization": f"Bearer {c.get(f'/api/auth/qr/{q['secret']}').json()['access_token']}"}
-            return c.get("/api/members/me", headers=h).json()["marketing_consent"]
-        assert once(False) is False and once(True) is True and once(False) is False
+            return c.get("/api/members/me", headers=h).json()["marketing_consent"], h
+        assert once(False)[0] is False and once(True)[0] is True
+        assert once(False)[0] is True  # 재방문 때 체크하지 않아도 기존 동의 유지
+        _, h = once(False)
+        assert c.post("/api/members/me/opt-out", headers=h).json()["opted_out"] is True  # 철회는 수신거부로
+        assert once(False)[0] is True and c.get("/api/members/me", headers=h).json()["opted_out"] is True
 
 
 def test_continue_requires_scanned_session():

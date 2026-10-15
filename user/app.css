@@ -138,8 +138,6 @@ button:focus-visible { outline: 3px solid #ffcf54 !important; outline-offset: 3p
 .st-key-start_btn button p { font-size: 24px; }
 .order-box { background: #26262b; border-radius: 14px; padding: 14px 16px; margin-bottom: 10px; }
 .order-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 800; margin-bottom: 8px; }
-.status { font-size: 12px; font-weight: 800; padding: 3px 10px; border-radius: 999px; color: #1a1a1a; white-space: nowrap; }
-.status.s0 { background: #74b9ff; } .status.s1 { background: #ffb703; } .status.s2 { background: #55efc4; }
 .order-item { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; font-size: 14px; color: #ccc; padding: 4px 0; }
 .order-item > span:first-child { min-width: 0; overflow-wrap: anywhere; }
 .order-item > span:last-child { white-space: nowrap; flex-shrink: 0; }

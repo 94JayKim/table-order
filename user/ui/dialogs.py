@@ -51,16 +51,13 @@ def orders_dialog():
         st.html('<div class="cart-empty">아직 주문 내역이 없어요</div>')
         return
     for o in reversed(orders):
-        elapsed = time.time() - o["ts"]
-        s, label = (0, "접수완료") if elapsed < 15 else (1, "조리중") if elapsed < 45 else (2, "서빙완료")
         rows = "".join(
             f'<div class="order-item"><span>{l["name"]}{" (" + l["opt"] + ")" if l["opt"] else ""} × {l["qty"]}</span>'
             f'<span>{won(l["unit"] * l["qty"])}</span></div>' for l in o["lines"])
         st.html(f'<div class="order-box"><div class="order-head"><span>주문 #{o["no"]} · {o["time"]}</span>'
-                    f'<span class="status s{s}">{label}</span></div>{rows}'
+                    f'</div>{rows}'
                     f'<div class="order-item" style="margin-top:6px;font-weight:800;color:#ffb703"><span>소계</span><span>{won(o["total"])}</span></div></div>')
     st.html(f'<div class="total-row"><span>누적 주문금액</span><b>{won(sum(o["total"] for o in orders))}</b></div>')
-    st.caption("※ 데모: 시간이 지나면 주문 상태가 자동으로 바뀝니다. 새로 열면 갱신돼요.")
 
 
 @st.dialog("직원 호출", width="medium")

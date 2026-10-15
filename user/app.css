@@ -325,10 +325,16 @@ button:focus-visible { outline: 3px solid #ffcf54 !important; outline-offset: 3p
 [class*="st-key-quiz_opt_"] [data-testid="stBaseButton-primary"] { background: linear-gradient(#ff9a40, #f0560a); border-color: #f0560a; box-shadow: 0 6px 16px rgba(240,86,10,.4); }
 [class*="st-key-quiz_opt_"] [data-testid="stBaseButton-primary"] p { color: #fff !important; }
 [class*="st-key-quiz_opt_"] [data-testid="stBaseButton-secondary"]:hover { border-color: #ff9a40; color: #ff9a40; }
-.st-key-quiz_steps { justify-content: center; gap: 6px !important; flex-wrap: wrap; }
-.st-key-quiz_steps > [data-testid="stElementContainer"] { width: auto !important; flex: 0 0 auto; }
-.st-key-quiz_steps button { min-height: 36px; min-width: 36px; padding: 2px 8px; border-radius: 999px; }
-.st-key-quiz_steps button p { font-size: 14px; font-weight: 800; }
+.st-key-quiz_steps { flex-wrap: nowrap !important; gap: 4px !important; }
+.st-key-quiz_steps > [data-testid="stElementContainer"] { flex: 1 1 0 !important; width: auto !important; min-width: 0; }
+.st-key-quiz_steps button { min-height: 30px; padding: 0 2px; border-radius: 8px; border: 0; background: #2a2a31; }
+.st-key-quiz_steps button p { font-size: 12px; font-weight: 800; color: #8c8c96; }
+.st-key-quiz_steps [data-testid="stBaseButton-secondary"]:not(:disabled) { background: linear-gradient(90deg, #4c8dff, #7db1ff); }
+.st-key-quiz_steps [data-testid="stBaseButton-secondary"]:not(:disabled) p { color: #fff; }
+.st-key-quiz_steps [data-testid="stBaseButton-secondary"]:not(:disabled):hover { filter: brightness(1.1); }
+.st-key-quiz_steps [data-testid="stBaseButton-primary"] { background: linear-gradient(#ff9a40, #f0560a); box-shadow: 0 2px 8px rgba(240,86,10,.4); }
+.st-key-quiz_steps [data-testid="stBaseButton-primary"] p { color: #fff; }
+.st-key-quiz_steps button:disabled { opacity: .55; }
 .st-key-quiz_answers { justify-content: center; gap: 8px !important; flex-wrap: wrap; }
 .st-key-quiz_answers > [data-testid="stElementContainer"] { width: auto !important; flex: 0 0 auto; }
 .st-key-quiz_answers button { min-height: 36px; padding: 4px 14px; border-radius: 999px; border-color: #3a3a42; }

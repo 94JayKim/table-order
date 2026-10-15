@@ -81,15 +81,12 @@ def render_quiz_question(step):
     with st.container(key="quiz_top"):
         c_back, c_bar, c_close = st.columns([1.2, 5, 2.4], vertical_alignment="center")
     c_back.button("←", key="quiz_back", on_click=quiz_back, disabled=step == 0, width="stretch", help="이전 질문")
-    c_bar.html(f'<div class="qz-progress"><span class="n">{step + 1}</span><div class="bar">'
-               f'<i style="width:{(step + 1) / len(ctx.QUESTIONS) * 100:.0f}%"></i></div><span class="t">{len(ctx.QUESTIONS)}</span></div>')
-    c_close.button("🍽️ 메뉴로 돌아가기", key="quiz_close", on_click=go, args=("menu",), width="stretch", help="질문을 그만하고 메뉴 화면으로 돌아가기")
-    with st.container(horizontal=True, key="quiz_steps"):
+    with c_bar, st.container(horizontal=True, key="quiz_steps"):  # 질문 수만큼 나뉜 진행바: 답한 칸은 채워지고, 누르면 그 질문으로 이동
         for i, question in enumerate(ctx.QUESTIONS):
-            done = question["id"] in answers
             st.button(f"{i + 1}", key=f"quiz_step_{i}", on_click=quiz_goto, args=(i,), disabled=i not in reachable_steps(),
-                      type="primary" if i == step else "secondary",
-                      help=f"{question['title']}" + (" (답변 완료 · 눌러서 수정)" if done else ""))
+                      type="primary" if i == step else "secondary", width="stretch",
+                      help=f"{question['title']}" + (" (답변 완료 · 눌러서 수정)" if question["id"] in answers else ""))
+    c_close.button("🍽️ 메뉴로 돌아가기", key="quiz_close", on_click=go, args=("menu",), width="stretch", help="질문을 그만하고 메뉴 화면으로 돌아가기")
     st.html(f'<div class="qz-group">{escape(q["group"])}</div><h2 class="qz-title">{escape(q["title"])}</h2>')
     with st.container(horizontal=True, key="quiz_grid"):
         for i, o in enumerate(q["options"]):

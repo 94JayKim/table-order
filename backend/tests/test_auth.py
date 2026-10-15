@@ -215,3 +215,21 @@ def test_regenerate_keeps_completed_login():
         scan_and_login(c, old["token"])
         c.post("/api/auth/qr", json={"table_no": 1, "previous_secret": old["secret"]})
         assert c.get(f"/api/auth/qr/{old['secret']}").json()["event"] == "logged_in"
+
+
+def test_blocked_member_is_rejected_without_counting_a_visit():
+    with TestClient(make()) as c:
+        q = c.post("/api/auth/qr", json={"table_no": 1}).json()
+        scan_and_login(c, q["token"], "중복")
+        h = {"Authorization": f"Bearer {c.get(f'/api/auth/qr/{q['secret']}').json()['access_token']}"}
+        me = c.get("/api/members/me", headers=h).json()
+        q2 = c.post("/api/auth/qr", json={"table_no": 1, "logged_in_member_ids": [me["id"]]}).json()
+        c.get(f"/api/auth/kakao/start?token={q2['token']}")
+        c.get("/api/auth/kakao/continue", params={"token": q2["token"]}, follow_redirects=False)
+        r = c.get("/api/auth/kakao/callback", params={"state": q2["token"], "code": "mock-중복"})
+        assert r.status_code == 409 and "이미 로그인" in r.text
+        assert c.get(f"/api/auth/qr/{q2['secret']}").json()["status"] == "rejected"
+        assert c.get("/api/members/me", headers=h).json()["visit_count"] == 1
+        # 다른 회원은 같은 설정의 QR로 로그인된다
+        q3 = c.post("/api/auth/qr", json={"table_no": 1, "logged_in_member_ids": [me["id"]]}).json()
+        assert scan_and_login(c, q3["token"], "다른회원").status_code == 200

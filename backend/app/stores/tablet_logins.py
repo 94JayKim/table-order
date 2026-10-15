@@ -29,12 +29,13 @@ class TabletLoginStore:
     def record(self, table_no: int, member_id: int, nickname: str) -> None:
         """로그인 완료 시 기록한다. 유효 시간이 지난 옛 기록은 지우고, 이미 있으면 그대로 둔다."""
         self.db.run("DELETE FROM tablet_logins WHERE table_no=? AND logged_in_at<?", (table_no, self._cutoff()))
-        self.db.run("INSERT OR IGNORE INTO tablet_logins (table_no, member_id, nickname, logged_in_at) VALUES (?,?,?,?)",
+        self.db.run("INSERT INTO tablet_logins (table_no, member_id, nickname, logged_in_at) VALUES (?,?,?,?) "
+                    "ON CONFLICT DO NOTHING",
                     (table_no, member_id, nickname, _iso(datetime.now(timezone.utc))))
 
     def list(self, table_no: int) -> list[dict]:
         rows = self.db.all("SELECT member_id AS id, nickname, logged_in_at AS at, eligible, prize FROM tablet_logins "
-                           "WHERE table_no=? AND logged_in_at>=? ORDER BY logged_in_at, rowid", (table_no, self._cutoff()))
+                           "WHERE table_no=? AND logged_in_at>=? ORDER BY logged_in_at, member_id", (table_no, self._cutoff()))
         return [{**r, "eligible": bool(r["eligible"])} for r in rows]
 
     def set_prize(self, table_no: int, member_id: int, prize: str) -> bool:

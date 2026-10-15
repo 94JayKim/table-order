@@ -32,6 +32,12 @@ button:focus-visible { outline: 3px solid #ffcf54 !important; outline-offset: 3p
 
 .st-key-order_layout > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"] { display: grid; grid-template-columns: 156px minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
 .st-key-order_layout > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] { width: 100%; flex: none; }
+/* AI 질문 결과: 결과(왼쪽) + 장바구니(오른쪽) */
+.st-key-quiz_result_layout > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"] { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
+.st-key-quiz_result_layout > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] { width: 100%; flex: none; min-width: 0; }
+@media (min-width: 1101px) { .st-key-quiz_result_layout > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child { position: sticky; top: 24px; } }
+@media (max-width: 1100px) { .st-key-quiz_result_layout > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"] { grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; } }
+@media (max-width: 900px) { .st-key-quiz_result_layout > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"] { grid-template-columns: minmax(0, 1fr); } }
 .st-key-categories { gap: 10px; }
 [class*="st-key-cat_"] button, .st-key-open_quiz button { min-height: 54px; justify-content: flex-start; padding: 10px 14px; }
 [class*="st-key-cat_"] button p { font-size: 15px; white-space: nowrap; }

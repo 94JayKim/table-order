@@ -131,6 +131,11 @@ def render_quiz_result():
     st.caption("현재는 더미 데이터와 임시 규칙으로 만든 데모 추천입니다. 조합 할인은 회원에게만, 세트 단위로 적용됩니다.")
 
 
+def quiz_at_result():
+    """결과 화면을 보여 줄 차례인가 (모든 질문에 답했고 마지막까지 넘어왔다)."""
+    return st.session_state.quiz["step"] >= len(ctx.QUESTIONS) and first_unanswered() >= len(ctx.QUESTIONS)
+
+
 def render_ai_quiz():
     quiz = st.session_state.quiz
     if quiz["step"] >= len(ctx.QUESTIONS) and first_unanswered() < len(ctx.QUESTIONS):

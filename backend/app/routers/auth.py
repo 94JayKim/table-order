@@ -22,6 +22,7 @@ router = APIRouter(prefix="/api/auth", tags=["QR 로그인"])
 class QrRequest(BaseModel):
     table_no: int = Field(ge=1)
     previous_secret: str | None = None  # QR 재생성: 이전 세션을 먼저 정리한다
+    logged_in_member_ids: list[int] = []  # 이 태블릿에서 이미 로그인한 회원. 같은 회원의 중복 로그인을 막는다
 
 
 def _page(title: str, body: str, status: int = 200) -> HTMLResponse:
@@ -40,7 +41,7 @@ async def create_qr(body: QrRequest, request: Request, settings: Settings = Depe
     store = request.app.state.login_store
     if body.previous_secret:
         store.discard(body.previous_secret)
-    s = store.create(body.table_no)
+    s = store.create(body.table_no, body.logged_in_member_ids)
     return {"token": s.token, "secret": s.secret, "expires_in": int(store.ttl),
             "qr_url": f"{settings.public_base_url}/api/auth/kakao/start?token={s.token}"}
 
@@ -131,6 +132,10 @@ async def kakao_callback(request: Request, state: str, code: str = "", error: st
         profile = await app.state.kakao.fetch_profile(code)
     except KakaoError as e:
         return _page("카카오 로그인에 실패했어요", html.escape(str(e)), 502)
+    existing = app.state.members.get_by_kakao(profile["kakao_id"])
+    if existing and existing["id"] in s.blocked_member_ids:
+        store.reject(s)
+        return _page("이미 로그인하셨어요", "이 태블릿에서 이미 로그인한 회원입니다. 다른 회원이 로그인해 주세요.", 409)
     member = app.state.members.upsert_login(**profile)
     if s.marketing_consent:  # 체크하지 않았다고 이전 동의를 지우지 않는다 (철회는 수신거부로)
         member = app.state.members.set_marketing_consent(member["id"], True)
@@ -156,6 +161,10 @@ async def supabase_callback(state: str, request: Request, code: str = "", error:
         profile = await app.state.supabase.fetch_profile(code, verifier)
     except SupabaseAuthError as e:
         return _page("카카오 로그인에 실패했어요", html.escape(str(e)), 502)
+    existing = app.state.members.get_by_kakao(profile["kakao_id"])
+    if existing and existing["id"] in s.blocked_member_ids:
+        store.reject(s)
+        return _page("이미 로그인하셨어요", "이 태블릿에서 이미 로그인한 회원입니다. 다른 회원이 로그인해 주세요.", 409)
     member = app.state.members.upsert_login(**profile)
     if s.marketing_consent:  # 체크하지 않았다고 이전 동의를 지우지 않는다 (철회는 수신거부로)
         member = app.state.members.set_marketing_consent(member["id"], True)

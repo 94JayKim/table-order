@@ -61,3 +61,67 @@ def test_switching_tab_updates_url():
     app = open_marketing()
     app.radio(key="mk_tab").set_value("AI").run()
     assert app.query_params["tab"] == "AI"
+
+
+def test_keyword_recipients_and_combos():
+    assert marketing_ai.keyword_grades(["휴면"]) == ["휴면"]
+    assert marketing_ai.keyword_grades(["주문", "단골"]) == ["단골"]
+    assert marketing_ai.keyword_grades(["휴면", "단골"]) == []  # 교집합이 비면 빈 목록
+    combos = marketing_ai.keyword_combos()
+    assert ("휴면", "단골") not in combos and ("주문", "단골") in combos
+    assert all(marketing_ai.keyword_grades(c) for c in combos)
+
+
+def test_generate_sms_falls_back_to_template(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    repo = repo_mod.connect("change-me").repo
+    ctx = marketing_ai.build_context(repo, repo_mod.DEFAULT_RULE)
+    text, source = marketing_ai.generate_sms(["날씨", "행사"], ctx, weather="비 오는 날", event="치맥 데이")
+    assert source == "template" and "비 오는 날" in text and "치맥 데이" in text
+
+
+def test_generate_sms_uses_ai_and_survives_failure(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    ctx = marketing_ai.build_context(repo_mod.connect("change-me").repo, repo_mod.DEFAULT_RULE)
+    monkeypatch.setattr(marketing_ai, "_ask_claude", lambda *a: "AI 문구")
+    assert marketing_ai.generate_sms(["주문"], ctx) == ("AI 문구", "ai")
+
+    def boom(*a):
+        raise marketing_ai.httpx.ConnectError("x")
+    monkeypatch.setattr(marketing_ai, "_ask_claude", boom)
+    assert marketing_ai.generate_sms(["주문"], ctx)[1] == "template"
+
+
+def test_suggest_candidates_gives_up_to_five_with_recipients(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    ctx = marketing_ai.build_context(repo_mod.connect("change-me").repo, repo_mod.DEFAULT_RULE)
+    cands = marketing_ai.suggest_candidates(ctx)
+    assert 4 <= len(cands) <= 5
+    assert all(c["grades"] and c["body"] and c["source"] == "template" for c in cands)
+
+
+def test_ai_button_shows_candidates_and_editable_recipients(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    app = open_marketing()
+    assert not [b for b in app.button if b.label.startswith("🆕") or b.label.startswith("💤 휴면 복귀")]  # 빠른 문구 제거
+    app.button(key="ai_sms_generate").click().run()
+    assert not app.exception
+    assert 4 <= len([b for b in app.button if b.key and b.key.startswith("ai_cand_")]) <= 5
+    app.button(key="ai_cand_1").click().run()  # 두 번째 후보: 수신자·본문이 채워진다
+    cand = app.session_state["ai_candidates"][1]
+    assert app.multiselect(key="sms_grades").value == cand["grades"]
+    assert app.text_area(key="sms_body").value == cand["body"]
+    ids = [int(i) for i in app.session_state["repo"].members(app.session_state["grade_rule"]).query(
+        "`마케팅 수신 동의` and not 수신거부 and 등급 in @cand['grades']")["customer_id"]]
+    assert ids  # 수신자 목록이 비어 있지 않다
+
+
+def test_removing_a_recipient_shrinks_send_target(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    repo = repo_mod.connect("change-me").repo
+    full = repo.sms_preview(["휴면"], "문구")["targets"]
+    members = repo.members(repo_mod.DEFAULT_RULE)
+    ids = members[members["마케팅 수신 동의"] & ~members["수신거부"] & (members["등급"] == "휴면")]["customer_id"].tolist()
+    assert full == len(ids) >= 2
+    assert repo.sms_preview(["휴면"], "문구", member_ids=ids[1:])["targets"] == full - 1
+    assert repo.sms_preview(["휴면"], "문구", member_ids=[])["ok"] is False

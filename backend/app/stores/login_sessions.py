@@ -22,6 +22,7 @@ class LoginSession:
     member: dict | None = None
     access_token: str | None = None
     pkce_verifier: str | None = None  # Supabase PKCE 용. 서버만 보관한다
+    marketing_consent: bool = False  # 휴대폰에서 받은 광고성 문자 수신 동의 (로그인 완료 때 회원에 저장)
     claimed: bool = False  # 로그인 결과를 태블릿이 이미 받아갔는지
     subscribers: list[asyncio.Queue] = field(default_factory=list)
 
@@ -39,6 +40,16 @@ class LoginSessionStore:
         self._by_token[s.token] = s
         self._by_secret[s.secret] = s
         return s
+
+    def discard(self, secret: str) -> bool:
+        """QR 재생성 시 이전 세션을 정리한다. 로그인 완료된 세션은 결과를 아직 못 받았을 수 있어 남겨 둔다."""
+        s = self._by_secret.get(secret)
+        if not s or s.status == "logged_in":
+            return False
+        self._by_secret.pop(secret, None)
+        self._by_token.pop(s.token, None)
+        self._publish(s, {"event": "expired"})
+        return True
 
     def by_token(self, token: str) -> LoginSession | None:
         return self._by_token.get(token)

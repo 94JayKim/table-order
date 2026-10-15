@@ -9,6 +9,23 @@ admin/     관리자 Streamlit 페이지
 shared/    두 페이지가 같이 쓰는 API 호출 코드
 ```
 
+### 화면 코드 구조 (user·admin 공통 규칙)
+
+`app.py` 는 진입점(로그인·메뉴 선택·화면 연결)만 맡고, 화면 코드는 역할별 폴더로 나눕니다.
+폴더 이름이 `pages` 가 아니라 `views` 인 이유는 Streamlit 이 `pages/` 폴더를 자동 멀티페이지로 인식하기 때문입니다.
+
+| 폴더 | 역할 | 백엔드의 대응 계층 |
+|---|---|---|
+| `views/` | 화면 하나를 조립하는 함수 (`page_*`, `render_*`) | `routers/` |
+| `ui/` | 여러 화면이 같이 쓰는 UI 조각·다이얼로그 | - |
+| `state/` | `st.session_state` 조작과 계산 (장바구니·로그인·퀴즈 등), `context.py` 는 매장 데이터 | `services/` |
+| `shared/api.py`, `*_repository.py` | 서버/더미 데이터 호출 | `stores/` |
+
+- `admin/`: `views/`(대시보드·메뉴·가중치·이벤트·고객·주문·직원호출·마케팅·로그인), `ui/widgets.py`
+- `user/`: `views/`(splash·order·ai), `ui/`(common·cart·dialogs·login·roulette), `state/`(session·cart·login·roulette·quiz·context)
+- 새 모듈은 저장소 루트 기준으로 `from user.state.cart import ...`, `from admin.ui.widgets import ...` 처럼 import 합니다. (예전부터 있는 `admin_repository`, `user_repository`, `server` 등 최상위 모듈은 폴더 이름 없이 import 합니다. 자세한 규칙은 `docs/DEVELOPMENT_GUIDE.md`)
+- 서버 관리자 API 는 `backend/app/routers/admin/` 안에 기능별 파일(menus·orders·members·stats·sms·content)로 나뉘어 있습니다.
+
 ## 실행
 
 ```bash
@@ -19,14 +36,27 @@ uv sync
 uv run fastapi dev main.py
 
 # 페이지 (저장소 루트에서, 서버가 켜져 있어야 QR 로그인·문자 발송이 동작)
-pip install -r requirements.txt
+uv venv .venv
+source .venv/Scripts/activate   # macOS/Linux 는 source .venv/bin/activate
+uv pip install -r requirements.txt
 streamlit run user/app.py --server.port 8501    # 사용자 (?table=12 로 테이블 지정)
 streamlit run admin/app.py --server.port 8502   # 관리자 (현재 토큰 입력 생략. 끄려면 ADMIN_SKIP_TOKEN=0, 토큰은 ADMIN_TOKEN)
 ```
 
 - 휴대폰으로 QR 로그인을 시험하려면 `backend/.env` 의 `PUBLIC_BASE_URL` 을 서버 PC 주소(예: `http://192.168.0.10:8000`)로 두고 `--host 0.0.0.0` 으로 실행하세요. 카카오 키가 없으면 모의 로그인 화면이 열립니다.
 - 문자 발송은 `SMS_DRY_RUN=true`(기본)이면 실제 전송 없이 기록만 남깁니다.
+- 문자는 솔라피로 발송하며 `SOLAPI_API_KEY`·`SOLAPI_API_SECRET`·`SOLAPI_SENDER_NUMBER`·`SMS_OPT_OUT_NUMBER`(무료수신거부 번호)가 필요합니다.
+- 문자 발송 테스트(관리자 토큰 필수, 회원·동의 조건 없이 번호 1건 즉시 발송. 월 한도·야간 제한은 적용, 본문 앞에 `[테스트]` 가 붙음):
+  ```bash
+  curl -X POST http://localhost:8000/admin/api/sms/test \
+    -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+    -d '{"phone": "010-1234-5678", "body": "테스트 문자입니다"}'
+  # → {"ok": true, "dry_run": true, "type": "SMS", "request_id": "dryrun-...", "to": "01012345678"}
+  ```
+  `SMS_DRY_RUN=true` 면 실제 전송 없이 기록만, 실패 시 409 + `{"detail": {"ok": false, "problems": [...]}}`.
 - 자세한 계획과 체크리스트: `docs/PRODUCTION_PLAN.md`
+- 팀원용 개발 가이드(새 API 추가 순서, 경로 규칙, DB 스키마 변경 규칙): `docs/DEVELOPMENT_GUIDE.md`
+- 핵심 기능 플로우(로그인·룰렛·주문·AI 추천·직원 호출·문자): 손님·사장님 관점 `docs/FLOW_USER_ADMIN.md`, 개발자 관점 `docs/FLOW_DEVELOPER.md`
 
 ## Streamlit Community Cloud 배포 (user·admin 각각)
 

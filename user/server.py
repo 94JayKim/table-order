@@ -33,27 +33,12 @@ def safe_call(fn, *args, **kw):
     return None
 
 
-def create_qr(table_no: int):
-    """{token, secret, qr_url, expires_in} 또는 None."""
-    return safe_call(api.post, "/api/auth/qr", None, json={"table_no": table_no})
+def create_qr(table_no: int, previous_secret: str | None = None):
+    """{token, secret, qr_url, expires_in} 또는 None. previous_secret 을 주면 이전 QR 세션을 정리하고 새로 발급한다."""
+    body = {"table_no": table_no, **({"previous_secret": previous_secret} if previous_secret else {})}
+    return safe_call(api.post, "/api/auth/qr", None, json=body)
 
 
 def poll_login(secret: str):
     """{event:'status', status, remaining} / {event:'logged_in', member, access_token} 또는 None."""
     return safe_call(api.get, f"/api/auth/qr/{secret}")
-
-
-def update_profile(token: str, **fields):
-    """(성공 여부, 메시지)."""
-    try:
-        api.patch("/api/members/me", token, json={k: v for k, v in fields.items() if v is not None})
-        return True, "저장했어요."
-    except api.ApiError as e:
-        return False, "입력한 내용을 확인해 주세요." if e.status == 422 else "저장하지 못했어요."
-    except api.ApiUnavailable:
-        mark_offline()
-        return False, "서버에 연결할 수 없어요."
-
-
-def opt_out(token: str) -> bool:
-    return safe_call(api.post, "/api/members/me/opt-out", token) is not None

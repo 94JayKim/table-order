@@ -1,4 +1,4 @@
-# 정식 구현 계획: QR 로그인 · SENS 문자 발송
+# 정식 구현 계획: QR 로그인 · 솔라피 문자 발송
 
 더미(Streamlit 안에서만 동작)로 화면 흐름과 규칙을 확인했다. 이 문서는 더미를 정식 기능으로 바꾸는 기준이다.
 
@@ -32,7 +32,7 @@
 | GET | `/api/auth/kakao/start?token=` | QR 주소. 스캔 처리 후 카카오(키 없으면 모의 화면)로 302. 만료·사용된 QR은 410 |
 | GET | `/api/auth/kakao/callback` | 카카오 콜백. 회원 가입/갱신, JWT 발급, 태블릿에 알림 |
 | WS | `/api/auth/ws/{secret}` | 이벤트 `status` → `scanned` → `logged_in`(member, access_token) 또는 `expired` |
-| GET/PATCH | `/api/members/me` | JWT 필요. 휴대폰 번호(직접 입력)·마케팅 수신 동의 |
+| GET | `/api/members/me` | JWT 필요. 내 정보 조회 (휴대폰·성별·출생연도는 카카오 로그인 때 자동 수집, 마케팅 수신 동의는 로그인 직전 휴대폰 화면에서 선택) |
 
 - **token / secret 분리**: QR에는 `token`만 들어간다. 로그인 결과는 태블릿만 아는 `secret`으로만 받을 수 있어, QR을 찍은 제3자가 결과를 가로챌 수 없다.
 - **모의 모드**: `KAKAO_REST_API_KEY` 가 비어 있으면 `/api/auth/kakao/mock` 의 간단한 로그인 화면을 쓴다. 키를 넣으면 자동으로 실제 카카오 호출로 바뀌고 모의 화면은 404가 된다.
@@ -56,7 +56,7 @@
 ### 회원 테이블 `members`
 `id, kakao_id(unique), nickname, phone, gender, birthday, mbti, marketing_consent(bool), marketing_consent_at, opted_out(bool), visit_count, last_visit_at, created_at`
 
-## 2. 문자 발송 (SENS)
+## 2. 문자 발송 (솔라피)
 
 ### API 계약
 | 메서드 | 경로 | 설명 |
@@ -67,17 +67,15 @@
 | GET | `/admin/api/marketing/sms/logs` | 발송 내역 |
 | POST | `/api/members/me/opt-out` | 수신거부 (손님/링크 용) |
 
-### 규칙 (`admin/sens_demo.py` 와 `admin/test_admin.py::SensDemoTests` 가 기준 명세)
+### 규칙
 - 90바이트 이하 SMS, 초과 LMS (한글 2바이트).
 - 본문 앞 `(광고)업체명`, 끝 무료수신거부 안내 자동 삽입.
 - 수신 동의 + 수신거부 아님인 회원만. 야간(21~08시) 차단. 월 한도 초과 시 차단.
 - 한도 값은 설정(`SMS_MONTHLY_LIMIT`, `LMS_MONTHLY_LIMIT`)으로 이동 — 더미의 50/10은 가정값.
-- `SMS_DRY_RUN=true` 이면 SENS 를 호출하지 않고 로그만 기록 (실제 키 없이 전체 흐름 테스트 가능).
+- `SMS_DRY_RUN=true` 이면 솔라피를 호출하지 않고 로그만 기록 (실제 키 없이 전체 흐름 테스트 가능).
 
-### SENS 호출 (v2)
-- `POST https://sens.apigw.ntruss.com/sms/v2/services/{serviceId}/messages`
-- 헤더 `x-ncp-apigw-timestamp`, `x-ncp-iam-access-key`, `x-ncp-apigw-signature-v2` (HMAC-SHA256: `POST {uri}\n{timestamp}\n{accessKey}`)
-- body `{type: SMS|LMS, from, content, messages:[{to}]}` — 한 번에 최대 건수 제한은 호출 전 콘솔 문서로 확인.
+### 솔라피 호출
+- `POST https://api.solapi.com/messages/v4/send-many/detail` (HMAC-SHA256 인증 헤더), 예약은 `scheduledDate`, 예약 취소는 `DELETE /messages/v4/groups/{groupId}/schedule`.
 
 ### 테이블
 `sms_logs(id, request_id, type, content, target_count, status, error, created_at)`, 월 사용량은 `sms_logs` 집계.
@@ -90,7 +88,7 @@
 - ✅ 로그인 세션 저장소 (일회용, 3분 만료, token/secret 분리), `/api/auth/*` REST + `WS /api/auth/ws/{secret}` + 폴링
 - ✅ 카카오 클라이언트 (키 없으면 모의 모드, 키 있으면 실제 호출 코드), 회원 저장소(SQLite), JWT, `/api/members/me`
 - ✅ **[user] 서버 연동**: 실제 QR 이미지(`qrcode`), 2초 폴링으로 로그인 감지, 만료 시 QR 새로고침, `?table=번호`로 테이블 지정
-- ✅ **[user] 로그인 후 화면**: 닉네임 표시, 룰렛 한 번 더, 휴대폰 번호·출생연도·성별·마케팅 수신 동의 입력, 문자 수신거부 버튼
+- ✅ **[user] 로그인 후 화면**: 닉네임 표시, 룰렛 한 번 더, 회원 정보 입력 폼은 제거 (성별·생일·번호는 카카오 로그인 때 자동 수집, 마케팅 수신 동의는 휴대폰 로그인 화면에서 선택)
 - ✅ **룰렛 화면 흐름**: 비로그인 START → 로그인 팝업(QR), 로그인 후 START → 룰렛, 이미 돌린 뒤 START → 다른 회원 로그인 팝업(회원당 1회), 비회원 주문/회원 주문 버튼, 로그인한 회원이 하단에 누적 표시 (화면만, 서버 저장 없음)
 - ✅ 더미 시뮬레이션(`login_demo.py`) 제거. 서버가 없으면 QR 로그인만 꺼지고 주문 화면은 그대로 동작
 - ✅ 테스트: 백엔드 `backend/tests/test_auth.py`, 통합 `tests/test_qr_login_e2e.py`, 실제 서버 두 개 + 브라우저에서 화면의 QR을 디코딩해 스캔을 흉내 내는 확인까지 완료
@@ -99,14 +97,13 @@
 - ⏳ [백엔드] 로그아웃/JWT 만료 정책 정의
 - ⏳ 휴대폰 번호를 직접 입력 대신 카카오 수집으로 바꾸려면 비즈 앱 심사 후 `kakao.py` 수정
 
-### 3-2. 문자 발송 (SENS)
-- ✅ 발송 규칙: SMS/LMS 분기, `(광고)` 표기·수신거부 문구 자동 추가, 월 한도, 야간 차단, 수신 동의·번호·수신거부 필터 (`backend/app/services/sens.py`)
-- ✅ SENS 호출: v2 서명(HMAC-SHA256), `contentType=AD`, 100명 단위 분할, 실패 시 `failed` 로그. `SMS_DRY_RUN=true`(기본)이면 호출 없이 기록만
+### 3-2. 문자 발송 (솔라피)
+- ✅ 발송 규칙: SMS/LMS 분기, `(광고)` 표기·수신거부 문구 자동 추가, 월 한도, 야간 차단, 수신 동의·번호·수신거부 필터 (`backend/app/services/sms.py`)
+- ✅ 솔라피 호출: send-many/detail, 예약 발송·취소, 실패 시 `failed` 로그. `SMS_DRY_RUN=true`(기본)이면 호출 없이 기록만
 - ✅ 발송 로그 `sms_logs`와 월 사용량 집계 (실패는 한도에서 제외)
 - ✅ API: `/admin/api/marketing/sms/{preview,send,usage,logs}`, `/admin/api/members/{id}/opt-out`, `/api/members/me/opt-out`
-- ✅ **[admin] 마케팅 화면 API 연동** (관리자 토큰 로그인, 사용량·미리보기·발송·수신거부·내역). 더미 `sens_demo.py` 제거
-- ✅ 테스트: `backend/tests/test_sms.py`(SENS 호출은 MockTransport), 통합 `tests/test_sms_admin_e2e.py`
-- ⏳ SENS 1회 호출당 수신자 수 상한(현재 100)을 콘솔 문서로 확인
+- ✅ **[admin] 마케팅 화면 API 연동** (관리자 토큰 로그인, 사용량·미리보기·발송·수신거부·내역).
+- ✅ 테스트: `backend/tests/test_sms.py`(솔라피 호출은 MockTransport), 통합 `tests/test_sms_admin_e2e.py`
 
 ### 3-2b. AI 질문 (회의록 2.4) — 더미 데이터 화면
 - ✅ 메뉴 화면 왼쪽 위 **[💬 AI 질문]** 버튼 → 한 화면에 질문 하나, 큰 선택 카드, 선택하면 바로 다음 질문 (진행 바·이전·닫기)
@@ -188,7 +185,7 @@
 2. **닉네임(profile_nickname)** 을 *필수 동의* 로 설정한다.
 3. **카카오계정(이메일)**: Supabase 카카오 연동은 기본적으로 이메일을 요청한다. 이메일은 **비즈 앱 전환(사업자 정보 등록) 후에만** 필수로 받을 수 있다.
    - 비즈 앱이 아직 없다면: Supabase 쪽 카카오 설정에 이메일 없이 로그인을 허용하는 옵션(예: *Allow users without an email*)이 있는지 5단계에서 확인하고 켠다. 켜지 못하면 로그인 시 `KOE205`(잘못된 scope) 오류가 난다 → 그때는 **앱 설정 → 비즈니스 → 비즈 앱 전환** 을 먼저 진행한다.
-4. 성별·생일은 선택 동의로 설정해도 되지만, 심사 없이 받을 수 있는 범위인지 화면의 안내를 확인한다. 휴대폰 번호는 비즈 앱 심사가 필요하므로 지금은 받지 않는다(현재 코드는 직접 입력 기준).
+4. 성별·생일은 선택 동의로 설정해도 되지만, 심사 없이 받을 수 있는 범위인지 화면의 안내를 확인한다. 휴대폰 번호(`phone_number`)는 비즈 앱 심사가 필요하다. 코드는 `KAKAO_SCOPES` 기본값으로 성별·생일·출생연도·휴대폰 번호를 요청하므로, 콘솔에 동의항목을 설정하거나(휴대폰 번호는 심사 후) 설정하지 못한 항목은 `KAKAO_SCOPES` 에서 뺀다. 번호를 못 받으면 해당 회원에게는 광고 문자를 보낼 수 없다.
 
 **5단계. Supabase에 카카오 등록**
 1. Supabase 대시보드 → **Authentication → Sign In / Providers**(또는 Providers) → **Kakao** → Enable.
@@ -240,11 +237,10 @@ JWT_SECRET=<긴 랜덤 문자열>          # change-me 그대로 두지 말 것
 | 휴대폰에서 QR 주소가 열리지 않음 | `PUBLIC_BASE_URL` 이 `localhost` 로 되어 있음, 또는 다른 와이파이 |
 | 개발(HTTP)은 되는데 운영에서 실패 | 운영 도메인용 Redirect URL·카카오 앱 도메인 설정 누락 |
 
-### 네이버 클라우드 SENS (실제 발송 전까지)
-- [ ] 네이버 클라우드 가입·결제수단 등록, SENS 프로젝트 생성
-- [ ] 서비스 ID, Access Key, Secret Key 발급 → `.env`
-- [ ] 발신번호 등록·승인 (통신사 인증, 서류 필요할 수 있음)
-- [ ] 무료수신거부 번호 방식 확인 → `SENS_OPT_OUT_NUMBER`
+### 솔라피 (실제 발송 전까지)
+- [ ] 솔라피 가입, API Key·Secret 발급 → `.env`
+- [ ] 발신번호 등록·인증
+- [ ] 무료수신거부 번호 방식 확인 → `SMS_OPT_OUT_NUMBER`
 - [ ] 현재 무료 제공량·요금 확인 (한도 값 `SMS_MONTHLY_LIMIT`, `LMS_MONTHLY_LIMIT` 조정)
 
 ### 법무·정책
@@ -262,5 +258,5 @@ JWT_SECRET=<긴 랜덤 문자열>          # change-me 그대로 두지 말 것
 
 ## 6. 다음 순서
 1. 🙋 같은 와이파이 휴대폰으로 **모의 모드** 실기기 확인 (`PUBLIC_BASE_URL=http://서버PC주소:8000`, README 참고)
-2. 🙋 카카오·SENS 키 준비 → `.env`에 입력 → 실제 모드 전환 후 5장 체크리스트 수행 (SENS는 `SMS_DRY_RUN=false` 로 바꾸기 전에 본인 번호 1건부터)
+2. 🙋 카카오·솔라피 키 준비 → `.env`에 입력 → 실제 모드 전환 후 5장 체크리스트 수행 (솔라피는 `SMS_DRY_RUN=false` 로 바꾸기 전에 본인 번호 1건부터)
 3. ⏳ 3-3의 user 페이지 수정 사항 (요청 시)

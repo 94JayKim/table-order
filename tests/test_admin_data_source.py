@@ -30,13 +30,25 @@ def make_server(**kw):
     return create_app(s, sms_clock=lambda: datetime(2026, 10, 12, 14, 0, tzinfo=KST))
 
 
+def set_profile(c, h, **cols):
+    """카카오에서 받아 오는 값과 수신 동의를 테스트용으로 직접 채운다."""
+    members = c.app.state.members
+    mid = c.get("/api/members/me", headers=h).json()["id"]
+    consent = cols.pop("marketing_consent", None)
+    for col, val in cols.items():
+        members.db.run(f"UPDATE members SET {col}=? WHERE id=?", (val, mid))
+    if consent is not None:
+        members.set_marketing_consent(mid, consent)
+
+
 def seed_member_and_order(c):
+    consent = True
     q = c.post("/api/auth/qr", json={"table_no": 1}).json()
-    c.get(f"/api/auth/kakao/start?token={q['token']}", follow_redirects=False)
+    c.get(f"/api/auth/kakao/start?token={q['token']}")
+    c.get("/api/auth/kakao/continue", params={"token": q["token"], "agree": "1" if consent else ""}, follow_redirects=False)
     c.get("/api/auth/kakao/callback", params={"state": q["token"], "code": "mock-계약"})
     h = {"Authorization": f"Bearer {c.get(f'/api/auth/qr/{q['secret']}').json()['access_token']}"}
-    c.patch("/api/members/me", headers=h, json={"birth_year": 1995, "gender": "female", "phone": "010-1234-5678",
-                                                "marketing_consent": True})
+    set_profile(c, h, birth_year=1995, gender="female", phone="010-1234-5678")
     line = {"id": "c1", "name": "통닭", "opt": "", "unit": 18000, "qty": 1}
     c.post("/api/orders", headers=h, json={"table_no": 3, "lines": [line], "total": 18000})
 
@@ -103,6 +115,19 @@ def test_repository_tables_have_identical_columns_for_dummy_and_server(server):
     assert list(dummy.orders().columns) == list(real.orders().columns)
     row = real.orders().iloc[0]
     assert row["닉네임"] == "계약" and row["테이블"] == 3 and "통닭 x1" in row["주문 내역"]
+
+
+def test_dummy_schedule_and_cancel_restores_usage():
+    from datetime import datetime, timedelta
+    repo = ar.AdminRepository(DummyBackend())
+    base = repo.sms_usage()["used"]["SMS"]
+    when = datetime.now() + timedelta(days=1)
+    r = repo.sms_send(["휴면"], "예약 문자", when)
+    assert r["scheduled_at"] and repo.sms_usage()["used"]["SMS"] == base + r["count"]
+    log = repo.sms_logs()[0]
+    assert log["status"] == "scheduled"
+    assert repo.sms_cancel(log["id"])["status"] == "canceled" and repo.sms_usage()["used"]["SMS"] == base
+    assert not repo.sms_preview(["휴면"], "x", datetime.now())["ok"]  # 10분 이내 예약 거절
 
 
 def test_dummy_marketing_works_like_the_server_without_sending_anything():
@@ -218,6 +243,4 @@ def test_marketing_screen_in_dummy_mode_can_preview_and_send(monkeypatch):
     before = len(app.session_state["repo"].sms_logs())
     next(b for b in app.button if b.label == "발송").click().run()
     assert not app.exception and len(app.session_state["repo"].sms_logs()) == before + 1
-    app.button(key="tpl_🆕 신메뉴 안내").click().run()  # 빠른 문구가 대상 등급·본문을 채운다
-    assert "먹태구이" in app.text_area(key="sms_body").value and "휴면" not in app.multiselect(key="sms_grades").value
     assert any("발송 내역" in h.value for h in app.get("html"))

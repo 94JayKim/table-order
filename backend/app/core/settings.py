@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     kakao_rest_api_key: str = ""
     kakao_client_secret: str = ""
     kakao_redirect_uri: str = "http://localhost:8000/api/auth/kakao/callback"
+    # 로그인 때 자동으로 받아올 카카오 동의항목(scope). 카카오 콘솔에 설정되지 않은 항목이 있으면 KOE205 오류가 난다.
+    kakao_scopes: str = "profile_nickname gender birthday birthyear phone_number"
     # Supabase Auth 로 카카오 로그인 처리 (URL 과 anon 키가 모두 있으면 직접 카카오 호출 대신 이 방식을 쓴다)
     supabase_url: str = ""
     supabase_anon_key: str = ""
@@ -36,15 +38,14 @@ class Settings(BaseSettings):
     login_ttl_seconds: int = 180
     jwt_expire_minutes: int = 720
 
-    # 문자 발송 / 네이버 클라우드 SENS (docs/PRODUCTION_PLAN.md 2장)
-    sens_service_id: str = ""
-    sens_access_key: str = ""
-    sens_secret_key: str = ""
-    sens_sender_number: str = ""  # SENS에 등록·승인된 발신번호
-    sens_opt_out_number: str = ""  # 광고 문자 하단의 무료수신거부 번호
+    # 문자 발송 / 솔라피 (docs/PRODUCTION_PLAN.md 2장)
+    solapi_api_key: str = ""
+    solapi_api_secret: str = ""
+    solapi_sender_number: str = ""  # 솔라피에 등록된 발신번호
+    sms_opt_out_number: str = ""  # 광고 문자 하단의 무료수신거부 번호
     sms_monthly_limit: int = 50
     lms_monthly_limit: int = 10
-    sms_dry_run: bool = True  # True면 SENS를 호출하지 않고 로그만 남긴다
+    sms_dry_run: bool = True  # True면 솔라피를 호출하지 않고 로그만 남긴다
 
     @property
     def supabase_enabled(self) -> bool:

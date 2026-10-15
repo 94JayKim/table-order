@@ -3,6 +3,7 @@
 반환 모양은 백엔드 /admin/api/* 응답과 같다. 그래서 화면과 변환 코드(admin_repository.py)는
 데이터가 더미인지 서버인지 모르고, DATA_SOURCE 만 바꾸면 전환된다.
 """
+import copy
 import random
 from datetime import date, datetime, timedelta, timezone
 
@@ -42,6 +43,15 @@ MENUS = [
     _menu("d1", "side", "콜라", 2000, set_ok=False),
 ]
 
+STAFF_CALLS = ["💧 물", "🥄 수저·젓가락", "🍽️ 앞접시", "🧻 휴지·물티슈", "🧊 얼음", "🔥 가스불 점검", "💳 계산 요청", "🙋 기타 문의"]
+
+# 손님 화면 룰렛 칸과 같은 모양 (user/menu_data.py ROULETTE_PRIZES). weight 는 당첨 확률 가중치.
+ROULETTE_PRIZES = [
+    {"label": "모든 메뉴<br><b>5% 할인</b>", "short": "전 메뉴 5% 할인", "emoji": "🎟️", "color": "#f0556b", "kind": "discount", "percent": 5, "weight": 1},
+    {"label": "계란말이<br><b>서비스</b>", "short": "계란말이 서비스", "emoji": "🥚", "color": "#ff9f1a", "kind": "free", "item_id": "a4", "weight": 1},
+    {"label": "음료<br><b>서비스</b>", "short": "콜라 서비스", "emoji": "🥤", "color": "#f5c518", "kind": "free", "item_id": "d1", "weight": 1},
+]
+
 
 class Unsupported(Exception):
     """더미 모드에서는 쓸 수 없는 기능 (예: 실제 문자 발송)."""
@@ -70,6 +80,15 @@ class DummyBackend:
         r = random.Random(seed)
         self.menus_ = [dict(m) for m in MENUS]
         self.categories_ = [dict(c) for c in CATEGORIES]
+        self.roulette_ = copy.deepcopy(ROULETTE_PRIZES)
+        self.staff_calls_ = list(STAFF_CALLS)
+        now = datetime.now(timezone.utc)
+        self.calls_ = [
+            {"id": i, "ts": _iso(now - timedelta(minutes=ago)), "table_no": table, "items": items, "done": done}
+            for i, (ago, table, items, done) in enumerate([
+                (1, 7, ["💧 물", "🥄 수저·젓가락"], False), (4, 12, ["💳 계산 요청"], False),
+                (9, 3, ["🔥 가스불 점검"], False), (26, 21, ["🧊 얼음"], True), (41, 5, ["🍽️ 앞접시", "🧻 휴지·물티슈"], True),
+                (75, 18, ["🙋 기타 문의"], True)], 1)][::-1]
         self.members_ = []
         for i in range(1, 61):
             self.members_.append({
@@ -108,6 +127,30 @@ class DummyBackend:
     def save_categories(self, categories: list) -> list:
         self.categories_ = [dict(c) for c in categories]
         return self.categories_full()
+
+    def roulette_prizes(self) -> list:
+        return copy.deepcopy(self.roulette_)
+
+    def save_roulette_prizes(self, prizes: list) -> list:
+        self.roulette_ = copy.deepcopy(prizes)
+        return self.roulette_prizes()
+
+    def calls(self) -> list:
+        return [dict(c, items=list(c["items"])) for c in sorted(self.calls_, key=lambda c: c["id"], reverse=True)]
+
+    def finish_call(self, call_id: int) -> dict:
+        call = next((c for c in self.calls_ if c["id"] == call_id), None)
+        if call is None:
+            raise Unsupported("없는 호출입니다.")
+        call["done"] = True
+        return dict(call)
+
+    def staff_call_items(self) -> list:
+        return list(self.staff_calls_)
+
+    def save_staff_call_items(self, items: list) -> list:
+        self.staff_calls_ = list(items)
+        return self.staff_call_items()
 
     def save_menu(self, menu_id: str, fields: dict) -> dict:
         cur = next((m for m in self.menus_ if m["id"] == menu_id), None)
@@ -176,26 +219,27 @@ class DummyBackend:
                           for i, (day, kind, text, n, status, err) in enumerate(rows, 1)]
         self.sms_logs_.reverse()  # 서버처럼 최신 기록이 먼저
 
-    def _sms_targets(self, grades):
+    def _sms_targets(self, grades, member_ids=None):
         return [m for m in self.members_ if m["marketing_consent"] and not m["opted_out"]
-                and _grade(m["visit_count"], m["last_visit"], self.GRADE_RULE) in grades]
+                and _grade(m["visit_count"], m["last_visit"], self.GRADE_RULE) in grades
+                and (member_ids is None or m["id"] in member_ids)]
 
     def sms_usage(self) -> dict:
         if not hasattr(self, "sms_logs_"):
             self._seed_sms_logs()
         used = {"SMS": 0, "LMS": 0}
         for log in self.sms_logs_:
-            if log["status"] in ("sent", "dry_run"):
+            if log["status"] in ("sent", "dry_run", "scheduled"):
                 used[log["type"]] += log["target_count"]
         return {"month": TODAY.strftime("%Y-%m"), "used": used, "limit": dict(self.SMS_LIMIT)}
 
-    def sms_preview(self, grades: list, body: str) -> dict:
+    def sms_preview(self, grades: list, body: str, scheduled_at=None, member_ids=None) -> dict:
         text = f"(광고){self.STORE_NAME}\n{body.strip()}\n무료수신거부 {self.OPT_OUT_NUMBER}"
         size = sum(1 if ord(ch) < 128 else 2 for ch in text)
         kind = "SMS" if size <= 90 else "LMS"
         usage = self.sms_usage()
         remaining = usage["limit"][kind] - usage["used"][kind]
-        targets = self._sms_targets(grades)
+        targets = self._sms_targets(grades, member_ids)
         problems = []
         if not body.strip():
             problems.append("본문이 비어 있습니다.")
@@ -203,19 +247,30 @@ class DummyBackend:
             problems.append("발송 대상이 없습니다. (휴대폰 번호 입력 + 수신 동의 + 수신거부 아님)")
         if len(targets) > remaining:
             problems.append(f"이번 달 {kind} 무료 잔여 {max(remaining, 0)}건보다 대상({len(targets)}명)이 많습니다.")
+        if scheduled_at and scheduled_at.replace(tzinfo=None) < datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None) + timedelta(minutes=10):
+            problems.append("예약 시각은 지금부터 10분 이후여야 합니다.")
         # 야간(21~08시) 제한은 데모에서는 적용하지 않는다 (서버는 적용)
         return {"type": kind, "bytes": size, "content": text, "targets": len(targets), "remaining": remaining,
-                "problems": problems, "ok": not problems, "dry_run": True}
+                "problems": problems, "ok": not problems, "dry_run": True,
+                "scheduled_at": scheduled_at.isoformat() if scheduled_at else None}
 
-    def sms_send(self, grades: list, body: str) -> dict:
-        plan = self.sms_preview(grades, body)
+    def sms_send(self, grades: list, body: str, scheduled_at=None, member_ids=None) -> dict:
+        plan = self.sms_preview(grades, body, scheduled_at, member_ids)
         if not plan["ok"]:
             raise Unsupported("; ".join(plan["problems"]))
         rid = f"dryrun-{len(self.sms_logs_) + 1:04d}"
         self.sms_logs_.insert(0, {"id": len(self.sms_logs_) + 1, "ts": _iso(datetime.now(timezone.utc)),
                                   "month": TODAY.strftime("%Y-%m"), "request_id": rid, "type": plan["type"],
-                                  "content": plan["content"], "target_count": plan["targets"], "status": "dry_run", "error": None})
-        return {"request_id": rid, "count": plan["targets"], "dry_run": True}
+                                  "content": plan["content"], "target_count": plan["targets"], "error": None,
+                                  "status": "scheduled" if scheduled_at else "dry_run", "scheduled_at": plan["scheduled_at"]})
+        return {"request_id": rid, "count": plan["targets"], "dry_run": True, "scheduled_at": plan["scheduled_at"]}
+
+    def sms_cancel(self, log_id: int) -> dict:
+        log = next((x for x in self.sms_logs_ if x["id"] == log_id), None)
+        if log is None or log["status"] != "scheduled":
+            raise Unsupported("예약 상태의 문자만 취소할 수 있습니다.")
+        log["status"] = "canceled"
+        return dict(log)
 
     def sms_logs(self) -> list:
         self.sms_usage()

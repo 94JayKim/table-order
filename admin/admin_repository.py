@@ -14,8 +14,10 @@
 메서드를 추가하고 → AdminRepository 에 표 변환을 추가한다.
 """
 import os
+import re
 import sys
 import uuid
+from html import escape, unescape
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -23,13 +25,13 @@ import pandas as pd
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from admin_dummy_data import DummyBackend, Unsupported  # noqa: E402
+from admin_dummy_data import GRADES, DummyBackend  # noqa: E402, F401  (GRADES 는 화면에서 여기서 가져간다)
 from shared import api  # noqa: E402
-from user.menu_images import bundled_photo_uri  # noqa: E402
 
 ENDPOINTS = {
-    "store": "/api/store",
+    "store": "/api/v1/store",
     "menus": "/admin/api/menus",              # GET {categories, menus} / PUT·DELETE /{id}
+    "roulette": "/api/content/roulette_prizes",  # GET 칸 목록 / PUT /admin/api/content/roulette_prizes 통째로 교체
     "categories": "/api/content/categories",  # GET 전체 목록(가상 카테고리 포함) / PUT /admin/api/content/categories 통째로 교체
     "members": "/admin/api/members",          # GET ?repeat&regular&dormant
     "orders": "/admin/api/orders",
@@ -41,7 +43,6 @@ KST = timezone(timedelta(hours=9))
 SPICY_LABELS = {0: "안 매움", 1: "순한맛", 2: "보통맛", 3: "아주 매움"}
 SPICY_VALUES = {v: k for k, v in SPICY_LABELS.items()}
 MODES = ("dummy", "api", "auto")
-GRADES = ["신규", "재방문", "단골", "휴면"]
 DEFAULT_RULE = {"repeat": 2, "regular": 5, "dormant": 60}
 MENU_COLUMNS = ["id", "메뉴명", "카테고리", "가격", "설명", "이미지 URL", "판매 여부", "매운 정도", "추천 가중치", "세트 가능"]
 
@@ -76,6 +77,12 @@ class ApiBackend:
     def save_categories(self, categories):
         return api.put("/admin/api/content/categories", self.token, json=categories)
 
+    def roulette_prizes(self):
+        return api.get(ENDPOINTS["roulette"])
+
+    def save_roulette_prizes(self, prizes):
+        return api.put("/admin/api/content/roulette_prizes", self.token, json=prizes)
+
     def save_menu(self, menu_id, fields):
         return api.put(f"{ENDPOINTS['menus']}/{menu_id}", self.token, json=fields)
 
@@ -94,11 +101,14 @@ class ApiBackend:
     def sms_usage(self):
         return api.get(f"{ENDPOINTS['sms']}/usage", self.token)
 
-    def sms_preview(self, grades, body):
-        return api.post(f"{ENDPOINTS['sms']}/preview", self.token, json={"grades": grades, "body": body})
+    def sms_preview(self, grades, body, scheduled_at=None, member_ids=None):
+        return api.post(f"{ENDPOINTS['sms']}/preview", self.token, json=_sms_body(grades, body, scheduled_at, member_ids))
 
-    def sms_send(self, grades, body):
-        return api.post(f"{ENDPOINTS['sms']}/send", self.token, json={"grades": grades, "body": body})
+    def sms_send(self, grades, body, scheduled_at=None, member_ids=None):
+        return api.post(f"{ENDPOINTS['sms']}/send", self.token, json=_sms_body(grades, body, scheduled_at, member_ids))
+
+    def sms_cancel(self, log_id):
+        return api.post(f"{ENDPOINTS['sms']}/logs/{log_id}/cancel", self.token)
 
     def sms_logs(self):
         return api.get(f"{ENDPOINTS['sms']}/logs", self.token)
@@ -107,11 +117,26 @@ class ApiBackend:
         return api.post(ENDPOINTS["opt_out"].format(id=member_id), self.token)
 
 
+def _sms_body(grades, body, scheduled_at, member_ids=None) -> dict:
+    data = {"grades": grades, "body": body}
+    if member_ids is not None:
+        data["member_ids"] = [int(i) for i in member_ids]
+    if scheduled_at:
+        data["scheduled_at"] = scheduled_at.isoformat()  # 시간대 없으면 서버가 KST 로 본다
+    return data
+
+
 VIRTUAL_CATEGORIES = {"ai", "best"}  # 손님 화면에만 있는 가상 카테고리(AI 추천 조합·인기메뉴). 메뉴를 직접 넣지 않는다
 ICON_DEFAULT = "🍽️"
 # 새 카테고리의 메뉴 카드 배경색(손님 화면 그라데이션). 이름 → [시작색, 끝색]
 COLOR_PRESETS = {"주황": ["#f6b93b", "#e55039"], "초록": ["#b8e994", "#38ada9"], "빨강": ["#ff6b6b", "#7d1d3f"],
                  "노랑": ["#fbc531", "#c27c0e"], "파랑": ["#74b9ff", "#2d3a8c"], "보라": ["#a29bfe", "#4b3f9e"]}
+
+
+ROULETTE_MIN_SLOTS, ROULETTE_MAX_SLOTS = 2, 8
+ROULETTE_COLUMNS = ["칸 문구", "이모지", "종류", "할인율(%)", "서비스 메뉴", "색상", "확률 가중치", "당첨 안내문"]
+ROULETTE_KINDS = {"discount": "할인", "free": "서비스"}
+_HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
 class CategoryError(Exception):
@@ -140,14 +165,6 @@ class AdminRepository:
                  "매운 정도": SPICY_LABELS.get(m["spicy"], "안 매움"), "추천 가중치": m["weight"], "세트 가능": m["set_ok"]}
                 for m in payload["menus"]]
         return pd.DataFrame(rows, columns=MENU_COLUMNS)
-
-    def menu_visuals(self) -> dict[str, dict]:
-        """메뉴 id → 카드 썸네일에 쓸 {emoji, image_url, colors} (사진이 없으면 이모지+카테고리 색)."""
-        payload = self.backend.menus()
-        colors = {c["id"]: c.get("colors") or COLOR_PRESETS["보라"] for c in self.backend.categories_full()}
-        return {m["id"]: {"emoji": m.get("emoji") or "🍽️",
-                          "image_url": m.get("image_url") or bundled_photo_uri(m["id"]) or "",
-                          "colors": colors.get(m["cat"], COLOR_PRESETS["보라"])} for m in payload["menus"]}
 
     # ---- 카테고리 CRUD (왼쪽 패널) ----
     def category_list(self) -> list[dict]:
@@ -236,6 +253,63 @@ class AdminRepository:
         for menu_id in deleted:
             self.backend.delete_menu(menu_id)
         return {"saved": saved, "deleted": len(deleted)}
+
+    # ---- 이벤트: 룰렛 ----
+    def roulette_table(self) -> pd.DataFrame:
+        """룰렛 칸 목록 → 편집용 표. 서버의 칸 모양은 user/menu_data.py 의 ROULETTE_PRIZES 와 같다."""
+        names = {m["id"]: m["name"] for m in self.backend.menus()["menus"]}
+        rows = []
+        for p in self.backend.roulette_prizes():
+            free = p["kind"] == "free"
+            rows.append({"칸 문구": unescape(re.sub(r"<[^>]+>", "", p["label"].split("<br>")[0])), "이모지": p.get("emoji", ""),
+                         "종류": ROULETTE_KINDS[p["kind"]], "할인율(%)": 0 if free else int(p.get("percent", 0)),
+                         "서비스 메뉴": names.get(p.get("item_id"), p.get("item_id")) if free else None,
+                         "색상": p.get("color", "#888888"), "확률 가중치": p.get("weight", 1), "당첨 안내문": p.get("short", "")})
+        return pd.DataFrame(rows, columns=ROULETTE_COLUMNS)
+
+    @staticmethod
+    def roulette_odds(table: pd.DataFrame) -> list[float]:
+        """칸별 당첨 확률(%). 가중치 합이 0 이면 모두 같은 확률로 본다 (손님 화면과 같은 규칙)."""
+        w = [max(float(v), 0) if pd.notna(v) else 0.0 for v in table["확률 가중치"]]
+        total = sum(w)
+        return [round(100 * x / total, 1) for x in w] if total else [round(100 / len(w), 1)] * len(w) if w else []
+
+    def save_roulette(self, table: pd.DataFrame) -> None:
+        """편집한 표를 검사해 서버 칸 모양으로 바꿔 통째로 저장한다."""
+        ids = {m["name"]: m["id"] for m in self.backend.menus()["menus"]}
+        prizes = []
+        for n, row in enumerate(table.to_dict("records"), 1):
+            line1, kind = _text(row["칸 문구"]).strip(), {v: k for k, v in ROULETTE_KINDS.items()}.get(row["종류"])
+            if not line1:
+                raise CategoryError(f"{n}번째 칸의 문구를 입력해 주세요.")
+            if kind is None:
+                raise CategoryError(f"{n}번째 칸의 종류(할인/서비스)를 골라 주세요.")
+            color = _text(row["색상"]).strip()
+            if not _HEX.match(color):
+                raise CategoryError(f"{n}번째 칸의 색상은 #RRGGBB 형식이어야 해요.")
+            weight = row["확률 가중치"]
+            if pd.isna(weight) or weight < 0:
+                raise CategoryError(f"{n}번째 칸의 확률 가중치는 0 이상이어야 해요.")
+            prize = {"emoji": _text(row["이모지"]).strip() or "🎁", "color": color, "kind": kind, "weight": float(weight)}
+            if kind == "discount":
+                percent = row["할인율(%)"]
+                if pd.isna(percent) or not 1 <= percent <= 100:
+                    raise CategoryError(f"{n}번째 칸의 할인율은 1~100% 여야 해요.")
+                prize.update(percent=int(percent), label=f"{escape(line1)}<br><b>{int(percent)}% 할인</b>")
+                default_short = f"{line1} {int(percent)}% 할인"
+            else:
+                menu = _text(row["서비스 메뉴"])
+                if menu not in ids:
+                    raise CategoryError(f"{n}번째 칸의 서비스 메뉴를 골라 주세요.")
+                prize.update(item_id=ids[menu], label=f"{escape(line1)}<br><b>서비스</b>")
+                default_short = f"{menu} 서비스"
+            prize["short"] = _text(row["당첨 안내문"]).strip() or default_short
+            prizes.append(prize)
+        if not ROULETTE_MIN_SLOTS <= len(prizes) <= ROULETTE_MAX_SLOTS:
+            raise CategoryError(f"룰렛 칸은 {ROULETTE_MIN_SLOTS}~{ROULETTE_MAX_SLOTS}개여야 해요.")
+        if not any(p["weight"] > 0 for p in prizes):
+            raise CategoryError("확률 가중치가 0보다 큰 칸이 하나는 있어야 해요.")
+        self.backend.save_roulette_prizes(prizes)
 
     # ---- 고객 / 주문 / 통계 ----
     def members(self, rule: dict | None = None) -> pd.DataFrame:

@@ -3,22 +3,22 @@
 반환 모양은 백엔드 /admin/api/* 응답과 같다. 그래서 화면과 변환 코드(admin_repository.py)는
 데이터가 더미인지 서버인지 모르고, DATA_SOURCE 만 바꾸면 전환된다.
 """
+import copy
 import random
+import sys
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
+from user import menu_data  # noqa: E402
 
 TODAY = date(2026, 10, 12)
-GRADES = ["신규", "재방문", "단골", "휴면"]
+GRADES = ["신규", "재방문", "단골", "휴면"]  # admin_repository 도 여기 것을 가져다 쓴다
 AGE_GROUPS = ["20대 미만", "20대", "30대", "40대", "50대 이상"]
 
-# 손님 화면의 카테고리 콘텐츠와 같은 모양 (id, icon, name, colors). 서버에는 AI 추천 조합·인기메뉴 같은 가상 카테고리도 섞여 있다.
-CATEGORIES = [
-    {"id": "chicken", "icon": "🍗", "name": "치킨·튀김", "colors": ["#f6b93b", "#e55039"]},
-    {"id": "anju", "icon": "🍢", "name": "안주", "colors": ["#b8e994", "#38ada9"]},
-    {"id": "soup", "icon": "🍲", "name": "탕·전골", "colors": ["#ff6b6b", "#7d1d3f"]},
-    {"id": "beer", "icon": "🍺", "name": "맥주", "colors": ["#fbc531", "#c27c0e"]},
-    {"id": "soju", "icon": "🍶", "name": "소주·막걸리", "colors": ["#74b9ff", "#2d3a8c"]},
-    {"id": "side", "icon": "🥤", "name": "음료·사이드", "colors": ["#a29bfe", "#4b3f9e"]},
-]
+# 손님 화면(user/menu_data.py)과 같은 카테고리. 서버에는 AI 추천 조합·인기메뉴 같은 가상 카테고리도 섞여 있으나 관리자 더미는 실제 카테고리만 쓴다.
+CATEGORIES = [c for c in menu_data.CATEGORIES if c["id"] not in ("ai", "best")]
 
 
 def _menu(id_, cat, name, price, spicy=0, soldout=False, weight=50, set_ok=True, desc=""):
@@ -41,6 +41,9 @@ MENUS = [
     _menu("j1", "soju", "참이슬", 5000, set_ok=False),
     _menu("d1", "side", "콜라", 2000, set_ok=False),
 ]
+
+# 손님 화면 룰렛 칸(user/menu_data.py)의 앞 3칸에 당첨 확률 가중치(weight)를 더한 것.
+ROULETTE_PRIZES = [{**p, "weight": 1} for p in menu_data.ROULETTE_PRIZES[:3]]
 
 
 class Unsupported(Exception):
@@ -70,6 +73,7 @@ class DummyBackend:
         r = random.Random(seed)
         self.menus_ = [dict(m) for m in MENUS]
         self.categories_ = [dict(c) for c in CATEGORIES]
+        self.roulette_ = copy.deepcopy(ROULETTE_PRIZES)
         self.members_ = []
         for i in range(1, 61):
             self.members_.append({
@@ -86,7 +90,8 @@ class DummyBackend:
             ts = datetime(day.year, day.month, day.day, tzinfo=timezone(timedelta(hours=9))) + timedelta(minutes=r.randint(1020, 1430))
             self.orders_.append({"id": i, "ts": _iso(ts), "table_no": r.randint(1, 30), "member_id": r.choice(self.members_)["id"],
                                  "lines": lines, "total": sum(l["unit"] * l["qty"] for l in lines),
-                                 "ai_combo": r.random() < 0.45})
+                                 "ai_combo": r.random() < 0.45,
+                                 "roulette_discount_percent": 0, "recommendation_event_id": None})
         self.orders_.sort(key=lambda o: o["ts"], reverse=True)
 
     # ---- 로그인 / 매장 -----------------------------------------------------
@@ -108,6 +113,13 @@ class DummyBackend:
     def save_categories(self, categories: list) -> list:
         self.categories_ = [dict(c) for c in categories]
         return self.categories_full()
+
+    def roulette_prizes(self) -> list:
+        return copy.deepcopy(self.roulette_)
+
+    def save_roulette_prizes(self, prizes: list) -> list:
+        self.roulette_ = copy.deepcopy(prizes)
+        return self.roulette_prizes()
 
     def save_menu(self, menu_id: str, fields: dict) -> dict:
         cur = next((m for m in self.menus_ if m["id"] == menu_id), None)
@@ -176,26 +188,27 @@ class DummyBackend:
                           for i, (day, kind, text, n, status, err) in enumerate(rows, 1)]
         self.sms_logs_.reverse()  # 서버처럼 최신 기록이 먼저
 
-    def _sms_targets(self, grades):
+    def _sms_targets(self, grades, member_ids=None):
         return [m for m in self.members_ if m["marketing_consent"] and not m["opted_out"]
-                and _grade(m["visit_count"], m["last_visit"], self.GRADE_RULE) in grades]
+                and _grade(m["visit_count"], m["last_visit"], self.GRADE_RULE) in grades
+                and (member_ids is None or m["id"] in member_ids)]
 
     def sms_usage(self) -> dict:
         if not hasattr(self, "sms_logs_"):
             self._seed_sms_logs()
         used = {"SMS": 0, "LMS": 0}
         for log in self.sms_logs_:
-            if log["status"] in ("sent", "dry_run"):
+            if log["status"] in ("sent", "dry_run", "scheduled"):
                 used[log["type"]] += log["target_count"]
         return {"month": TODAY.strftime("%Y-%m"), "used": used, "limit": dict(self.SMS_LIMIT)}
 
-    def sms_preview(self, grades: list, body: str) -> dict:
+    def sms_preview(self, grades: list, body: str, scheduled_at=None, member_ids=None) -> dict:
         text = f"(광고){self.STORE_NAME}\n{body.strip()}\n무료수신거부 {self.OPT_OUT_NUMBER}"
         size = sum(1 if ord(ch) < 128 else 2 for ch in text)
         kind = "SMS" if size <= 90 else "LMS"
         usage = self.sms_usage()
         remaining = usage["limit"][kind] - usage["used"][kind]
-        targets = self._sms_targets(grades)
+        targets = self._sms_targets(grades, member_ids)
         problems = []
         if not body.strip():
             problems.append("본문이 비어 있습니다.")
@@ -203,19 +216,30 @@ class DummyBackend:
             problems.append("발송 대상이 없습니다. (휴대폰 번호 입력 + 수신 동의 + 수신거부 아님)")
         if len(targets) > remaining:
             problems.append(f"이번 달 {kind} 무료 잔여 {max(remaining, 0)}건보다 대상({len(targets)}명)이 많습니다.")
+        if scheduled_at and scheduled_at.replace(tzinfo=None) < datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None) + timedelta(minutes=10):
+            problems.append("예약 시각은 지금부터 10분 이후여야 합니다.")
         # 야간(21~08시) 제한은 데모에서는 적용하지 않는다 (서버는 적용)
         return {"type": kind, "bytes": size, "content": text, "targets": len(targets), "remaining": remaining,
-                "problems": problems, "ok": not problems, "dry_run": True}
+                "problems": problems, "ok": not problems, "dry_run": True,
+                "scheduled_at": scheduled_at.isoformat() if scheduled_at else None}
 
-    def sms_send(self, grades: list, body: str) -> dict:
-        plan = self.sms_preview(grades, body)
+    def sms_send(self, grades: list, body: str, scheduled_at=None, member_ids=None) -> dict:
+        plan = self.sms_preview(grades, body, scheduled_at, member_ids)
         if not plan["ok"]:
             raise Unsupported("; ".join(plan["problems"]))
         rid = f"dryrun-{len(self.sms_logs_) + 1:04d}"
         self.sms_logs_.insert(0, {"id": len(self.sms_logs_) + 1, "ts": _iso(datetime.now(timezone.utc)),
                                   "month": TODAY.strftime("%Y-%m"), "request_id": rid, "type": plan["type"],
-                                  "content": plan["content"], "target_count": plan["targets"], "status": "dry_run", "error": None})
-        return {"request_id": rid, "count": plan["targets"], "dry_run": True}
+                                  "content": plan["content"], "target_count": plan["targets"], "error": None,
+                                  "status": "scheduled" if scheduled_at else "dry_run", "scheduled_at": plan["scheduled_at"]})
+        return {"request_id": rid, "count": plan["targets"], "dry_run": True, "scheduled_at": plan["scheduled_at"]}
+
+    def sms_cancel(self, log_id: int) -> dict:
+        log = next((x for x in self.sms_logs_ if x["id"] == log_id), None)
+        if log is None or log["status"] != "scheduled":
+            raise Unsupported("예약 상태의 문자만 취소할 수 있습니다.")
+        log["status"] = "canceled"
+        return dict(log)
 
     def sms_logs(self) -> list:
         self.sms_usage()

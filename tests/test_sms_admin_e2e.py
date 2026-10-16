@@ -19,18 +19,38 @@ APP = str(ROOT / "admin" / "app.py")
 PAGES = ["대시보드", "메뉴 관리", "추천 가중치", "고객 등급", "주문 이력", "마케팅"]
 
 
+
+def go_page(app, page):
+    """사이드바에서 메뉴를 연다 (주문 이력·마케팅은 하위 메뉴의 첫 항목)."""
+    if page in {"주문 이력": 0, "마케팅": 0}:
+        sub = {"주문 이력": "전체 주문", "마케팅": "AI 문자"}[page]
+        return app.sidebar.radio(key=f"nav_sub_{page}").set_value(sub).run()
+    return app.sidebar.radio(key="nav_top").set_value(page).run()
+
 def make_server(hour=14, **kw):
     s = Settings(database_url="sqlite:///:memory:", kakao_rest_api_key="", public_base_url="http://t",
                  jwt_secret="x" * 32, admin_token="admin-secret", _env_file=None, **kw)
     return create_app(s, sms_clock=lambda: datetime(2026, 10, 12, hour, 0, tzinfo=KST))
 
 
+def set_profile(c, h, **cols):
+    """카카오에서 받아 오는 값과 수신 동의를 테스트용으로 직접 채운다."""
+    members = c.app.state.members
+    mid = c.get("/api/members/me", headers=h).json()["id"]
+    consent = cols.pop("marketing_consent", None)
+    for col, val in cols.items():
+        members.db.run(f"UPDATE members SET {col}=? WHERE id=?", (val, mid))
+    if consent is not None:
+        members.set_marketing_consent(mid, consent)
+
+
 def add_member(c, nick, phone="010-1234-5678", consent=True):
     q = c.post("/api/auth/qr", json={"table_no": 1}).json()
-    c.get(f"/api/auth/kakao/start?token={q['token']}", follow_redirects=False)
+    c.get(f"/api/auth/kakao/start?token={q['token']}")
+    c.get("/api/auth/kakao/continue", params={"token": q["token"], "agree": "1" if consent else ""}, follow_redirects=False)
     c.get("/api/auth/kakao/callback", params={"state": q["token"], "code": f"mock-{nick}"})
     h = {"Authorization": f"Bearer {c.get(f'/api/auth/qr/{q['secret']}').json()['access_token']}"}
-    c.patch("/api/members/me", headers=h, json={"phone": phone, "marketing_consent": consent})
+    set_profile(c, h, phone=phone)
     return h
 
 
@@ -50,7 +70,7 @@ def login(token="admin-secret"):
 
 
 def open_marketing(app):
-    app.sidebar.radio[0].set_value("마케팅").run()
+    app.sidebar.radio(key="nav_sub_마케팅").set_value("AI 문자").run()
     assert not app.exception
     return app
 
@@ -67,7 +87,7 @@ def test_login_needs_valid_server_token(server):
 def test_all_admin_pages_render_after_login(server):
     app = login()
     for page in PAGES:
-        app.sidebar.radio[0].set_value(page).run()
+        go_page(app, page)
         assert not app.exception, page
 
 

@@ -108,6 +108,39 @@ class QuizScreenTests(unittest.TestCase):
         self.assertEqual(app.session_state["quiz"]["answers"]["people"], next(q for q in QUESTIONS if q["id"] == "people")["options"][2]["value"])
         self.assertFalse(app.exception)
 
+    def test_can_jump_between_answered_questions_and_back_to_result(self):
+        app = self.open_quiz()
+        for q, pick in zip(QUESTIONS[:4], PICKS):
+            app.button(key=f"quiz_pick_{q['id']}_{pick}").click().run()
+        self.assertEqual(app.session_state["quiz"]["step"], 4)
+        self.assertTrue(app.button(key="quiz_step_5").disabled)  # 아직 답하지 않은 질문 너머는 막힘
+        app.button(key="quiz_step_1").click().run()
+        self.assertEqual(app.session_state["quiz"]["step"], 1)
+        app.button(key="quiz_step_4").click().run()
+        self.assertEqual(app.session_state["quiz"]["step"], 4)
+        for q, pick in zip(QUESTIONS[4:], PICKS[4:]):
+            app.button(key=f"quiz_pick_{q['id']}_{pick}").click().run()
+        self.assertEqual(app.session_state["quiz"]["step"], len(QUESTIONS))
+        # 결과에서 답변을 눌러 수정하면 다시 결과로
+        app.button(key="quiz_review_stress").click().run()
+        self.assertEqual(app.session_state["quiz"]["step"], 1)
+        app.button(key="quiz_pick_stress_0").click().run()
+        self.assertEqual(app.session_state["quiz"]["step"], len(QUESTIONS))
+        self.assertEqual(app.session_state["quiz"]["answers"]["stress"], "낮음")
+        self.assertFalse(app.exception)
+
+    def test_stale_double_click_cannot_skip_a_question_or_crash_result(self):
+        app = self.open_quiz()
+        app.button(key=f"quiz_pick_{QUESTIONS[0]['id']}_1").click().run()
+        # 이미 넘어간 첫 질문의 버튼이 한 번 더 처리돼도 다음 질문(1번)에 머문다
+        app.session_state["quiz"]["step"] = 5  # 건너뛴 것처럼 꼬인 상태
+        for i in range(1, len(QUESTIONS)):
+            app.session_state["quiz"]["answers"].pop(QUESTIONS[i]["id"], None)
+        app.session_state["quiz"]["step"] = len(QUESTIONS)  # 결과 화면인데 답이 비어 있음
+        app.run()
+        self.assertFalse(app.exception)
+        self.assertEqual(app.session_state["quiz"]["step"], 1)
+
     def test_full_flow_shows_result_and_adds_combo_to_cart(self):
         app = self.open_quiz()
         for q, pick in zip(QUESTIONS, PICKS):
@@ -118,6 +151,7 @@ class QuizScreenTests(unittest.TestCase):
         self.assertIn("자동 반영", html)
         adds = [b for b in app.button if str(b.key).startswith("add_combo_")]
         self.assertGreaterEqual(len(adds), 1)
+        self.assertTrue([b for b in app.button if b.key == "order_btn"])  # 결과 화면 오른쪽 장바구니
         adds[0].click().run()
         line = next(iter(app.session_state["cart"].values()))
         self.assertTrue(line["id"].startswith("combo:"))

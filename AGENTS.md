@@ -29,6 +29,7 @@ streamlit run admin/app.py --server.port 8502   # 관리자 (현재 토큰 입�
 - `user/`, `admin/`: `app.py`는 진입점만. 화면은 `views/`, 공용 UI는 `ui/`, 세션 상태·계산은 `state/`. 폴더명을 `pages`로 쓰지 않는다(Streamlit 자동 멀티페이지 때문).
 - 화면 코드는 `api`를 직접 부르지 않고 `user/user_repository.py`, `admin/admin_repository.py`만 부른다.
 - API 경로: 손님 `/api/...`, 관리자 `/admin/api/...`. 기준 문서는 `/mnt/project-files/api/FBGrowth_API_경로_통합_정리_최종_v7_목록표만.md`(프로젝트 파일).
+- TODO 진행 중 충돌·오류와 해결: `docs/TODO_CONFLICTS_AND_ERRORS.md`
 - 상세: `docs/DEVELOPMENT_GUIDE.md`(API 추가 순서), `docs/DB_SCHEMA.md`(DB 설계), `docs/FLOW_*.md`(기능 흐름), `docs/CODE_TOUR.md`.
 
 ## 더미 상태 (팀원이 구현할 뼈대)

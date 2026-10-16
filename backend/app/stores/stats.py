@@ -10,6 +10,12 @@ class StatsStore:
     def __init__(self, db: Database):
         self.db = db
 
+    def sales_orders(self) -> list[dict]:
+        """추가 통계는 주문 금액·시각만 필요하므로 메뉴 줄을 중복 조회하지 않는다."""
+        return self.db.all(
+            "SELECT o.id, o.table_no, o.member_id, o.total, o.ai_combo, o.created_at AS ts, m.nickname "
+            "FROM orders o LEFT JOIN members m ON m.id=o.member_id ORDER BY o.id")
+
     def orders(self) -> list[dict]:
         """주문 저장 담당 파일을 수정하지 않고 통계에 필요한 기록을 묶어 읽는다."""
         orders = self.db.all("SELECT id, member_id, total, ai_combo, created_at AS ts FROM orders ORDER BY id")

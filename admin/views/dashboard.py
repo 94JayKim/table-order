@@ -4,7 +4,7 @@
 import streamlit as st
 
 from admin.ui.widgets import bars, kpi, kpi_row, page_head, panel, sec_title
-from dashboard_stats import customer_care, menu_alerts, summarize
+from dashboard_stats import customer_care, menu_alerts
 
 ss = st.session_state
 
@@ -27,7 +27,7 @@ def render_sales_insights(s, x):
     kpi_row(
         kpi("오늘 주문", s["today_orders"], "건", accent=True),
         kpi("평균 주문금액", f"{s['avg_order_amount']:,}" if s["today_orders"] else "-", "원" if s["today_orders"] else ""),
-        kpi("오늘 매출", f"{x['last_day_revenue']:,}", "원", sub="현재까지 들어온 주문"),
+        kpi("오늘 매출", f"{x.get('today_revenue', x['last_day_revenue']):,}", "원", sub="현재까지 들어온 주문"),
         kpi("마지막 영업일 매출", f"{x['last_day_revenue']:,}", "원", sub=delta_text(x["last_day_change"], "지난주 같은 요일")),
         kpi("최근 매출 (7일)", f"{x['week_revenue']:,}", "원", sub=delta_text(x["week_change"], "지난 7일")),
         kpi("최근 매출 (30일)", f"{x['revenue']:,}", "원", sub=f"하루 평균 {x['daily_revenue']:,}원"),
@@ -48,7 +48,7 @@ def render_sales_insights(s, x):
 
 def render_order_customers(x, s):
     """고객 분석: 주문 고객 등급·테이블별 주문, 연령대·성별."""
-    sec_title("고객", "오늘 방문 고객과 회원·비회원 매출을 함께 확인해요")
+    sec_title("고객", "오늘 방문 고객과 마지막 영업일의 매출을 함께 확인해요")
     # 주문 목록 더미의 유무와 관계없이 서버의 오늘 고객 집계를 표시한다.
     kpi_row(kpi("오늘 신규 고객", s["new_customers"], "명", accent=True),
             kpi("오늘 재방문 고객", s["returning_customers"], "명"))
@@ -60,21 +60,21 @@ def render_order_customers(x, s):
         kpi_row(
             kpi("재방문 고객 비율", f"{x['returning_share']:.0%}" if x["returning_share"] is not None else "-",
                 sub="최근 주문 고객 중 재방문·단골"),
-            kpi("오늘 회원 매출 비중", f"{x['member_revenue_share']:.0%}" if x["member_revenue_share"] is not None else "-",
+            kpi("마지막 영업일 회원 매출 비중", f"{x['member_revenue_share']:.0%}" if x["member_revenue_share"] is not None else "-",
                 sub=member_sub),
-            kpi("오늘 상위 5팀 매출 비중", f"{x['top_customer_share']:.0%}" if x["top_customer_share"] is not None else "-",
+            kpi("마지막 영업일 상위 5팀 매출 비중", f"{x['top_customer_share']:.0%}" if x["top_customer_share"] is not None else "-",
                 sub=f"회원 {top_kinds['회원']}팀 · 비회원 {top_kinds['비회원']}팀 · {top_tables}"),
             min_width=150,
         )
         top = {f"[{c['kind']}] {c['name']} · {c['table']}번 테이블 · {c['orders']}회": c["amount"]
                for c in x["top_customers"]}
-        st.html(panel("오늘 매출 TOP 5", "회원 여부 · 오늘 결제금액 · 마지막 주문 테이블",
+        st.html(panel("마지막 영업일 매출 TOP 5", "회원 여부 · 해당 영업일 결제금액 · 마지막 주문 테이블",
                       bars(top, "원", ranked=True, empty="오늘 주문이 아직 없어요.")))
     cards = []
     if not x["empty"]:
         cards.extend([
             panel("고객 등급별 주문 고객", "최근 주문한 고객 수", bars(x["customer_grades"], "명")),
-            panel("오늘 주문이 많은 테이블 TOP 5", "오늘 주문 건수 기준", bars(x["top_tables"], "건", ranked=True)),
+            panel("마지막 영업일 주문 테이블 TOP 5", "마지막 영업일 주문 건수 기준", bars(x["top_tables"], "건", ranked=True)),
         ])
     _render_panel_grid(
         *cards,
@@ -150,8 +150,11 @@ def _render_dashboard(repo, sub):
     s = repo.stats(ss["grade_rule"])
     ai = s["ai"]
     # 회전율의 분모는 주문이 발생한 테이블 수가 아니라 매장에 등록된 전체 테이블 수여야 한다.
-    x = summarize(repo.orders(), repo.members(ss["grade_rule"]), tables=repo.store()["tables"])
+    x = repo.sales_insights(ss["grade_rule"])
     page_head("대시보드", "오늘 매장 현황을 한눈에 확인하세요")
+    if not x["empty"] and x.get("last_order_date"):
+        # 오늘 주문이 없어도 최근 통계가 남는 이유와 집계 기간을 사장님이 알 수 있게 표시한다.
+        st.caption(f"추가 통계는 마지막 주문일 {x['last_order_date']} 기준 최근 30일이에요. 오늘 주문·매출은 한국 시간 오늘 기준이에요.")
     st.button("🔄 최신 주문 반영", key="dashboard_refresh", help="현재까지 들어온 주문으로 대시보드 전체를 다시 계산해요")
     if sub == "한눈에 보기":
         render_today_sales(s, x)

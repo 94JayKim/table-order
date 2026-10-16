@@ -108,6 +108,10 @@ class ApiBackend:
         # 미리 본 등급 기준을 오늘 신규·재방문 집계에도 적용한다.
         return api.get(ENDPOINTS["stats"], self.token, params=rule)
 
+    def sales_insights(self, rule):
+        """추가 통계 전체를 한 번에 읽어 그래프마다 주문을 다시 조회하지 않는다."""
+        return api.get(f"{ENDPOINTS['stats']}/insights", self.token, params=rule)
+
     def calls(self):
         return api.get(ENDPOINTS["calls"], self.token)
 
@@ -397,6 +401,14 @@ class AdminRepository:
 
     def stats(self, rule: dict | None = None) -> dict:
         return self.backend.stats(rule or DEFAULT_RULE)
+
+    def sales_insights(self, rule: dict | None = None) -> dict:
+        """실제 서버의 추가 통계를 읽고, 더미 모드에서는 기존 화면 계산을 유지한다."""
+        if self.source == "api":
+            return self.backend.sales_insights(rule or DEFAULT_RULE)
+        from dashboard_stats import summarize
+
+        return summarize(self.orders(), self.members(rule), tables=self.store()["tables"])
 
     # ---- 직원 호출 ----
     def calls(self) -> list[dict]:

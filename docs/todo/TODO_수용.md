@@ -21,7 +21,7 @@
 | 0 | 0. 개발 흐름 확인 (테스트 버튼) | `POST /api/dev/db-test` (개발 전용) | 확인 전 |
 | 1 | 1. 고객 등급 · 수신거부 점검 | `GET /api/admin/customers`, `…/customers/grades`, `…/grades/rules`, `POST …/customers/{id}/opt-out` | 1-1 기존 구현 / 1-2 구현·자동 테스트 완료 |
 | 2 | 2. 대시보드 기본 통계 | `GET /admin/api/stats/sales`, `stats/menus/ranking`, `stats/customers`, `stats/ai-recommendations` | 구현·기능 테스트 완료 (전체 화면 테스트의 기존 룰렛 오류 별도) |
-| 3 | 3. 대시보드 추가 통계 | `stats/sales/hourly·trends·weekday·tickets`, `stats/tables` | 미구현 |
+| 3 | 3. 대시보드 추가 통계 | `stats/sales/hourly·trends·weekday·tickets`, `stats/tables` | 구현·기능 테스트 완료 (전체 화면 테스트의 기존 룰렛 오류 별도) |
 | 4 | 4. 운영 알림 | `GET /api/admin/alerts` | 미구현 |
 
 **다른 팀원과 겹치는 지점**
@@ -129,7 +129,7 @@ UI(대시보드 · 등급 카드 / 고객 등급 기준 패널) → A/views/dash
 
 ### 2-1. `GET /admin/api/stats/sales`, `…/stats/menus/ranking`, `…/stats/customers`, `…/stats/ai-recommendations`
 
-**현재 상태**: `GET /admin/api/stats`의 기본 통계 전체와 4개 세부 API를 실제 DB로 구현했다. 기존 응답 키와 화면 호출 경로를 유지한다. 3번의 매출 추이·테이블 통계와 4번의 알림은 아직 화면 계산/더미 경로다.
+**현재 상태**: `GET /admin/api/stats`의 기본 통계 전체와 4개 세부 API를 실제 DB로 구현했다. 기존 응답 키와 화면 호출 경로를 유지한다. 매출 추이·테이블 통계는 아래 3번에서 DB로 전환했으며, 4번 운영 알림은 아직 화면 계산 경로다.
 
 **2026-10-16 초기 작업 기록: 오늘 주문 건수만 구현 (이후 2번 전체로 확장)**
 
@@ -197,11 +197,11 @@ UI(대시보드 KPI 카드) → A/views/dashboard.py → repo.stats(rule) (A/adm
 
 ---
 
-## 3. 대시보드 추가 통계 (미구현)
+## 3. 대시보드 추가 통계 (구현·기능 테스트 완료)
 
 ### 3-1. `stats/sales/hourly` · `stats/sales/weekday` · `stats/sales/trends` · `stats/sales/tickets` · `stats/tables`
 
-**현재 상태**: 화면이 주문 표를 통째로 받아 `A/dashboard_stats.py`에서 계산한다(`summarize`, `_trend_stats`). 이 계산을 서버 API로 옮기는 작업이다. **시연에는 현재 방식으로도 동작하므로 2번이 끝난 뒤에 진행한다.**
+**현재 상태**: 5개 세부 API와 화면용 묶음 조회 `GET /admin/api/stats/insights`를 구현했다. API 모드 대시보드는 실제 DB의 추가 통계를 사용하고, 더미 모드는 `A/dashboard_stats.py`의 기존 계산을 유지한다.
 
 **목표**
 
@@ -235,10 +235,24 @@ UI(대시보드 · 시간대/요일 막대, 추이, 테이블 TOP5) → A/views/
 
 **상세 설명 / TODO**
 
-- [ ] 라우트는 `B/routers/admin/stats.py`에 추가(수용 단독 파일). 계산 함수는 `B/services/stats.py`에, SQL은 `B/stores/stats.py`에.
-- [ ] 화면(`A/dashboard_stats.py`)의 계산 로직을 파이썬 서비스로 옮길 때 **로직을 복사하지 말고 함수 단위로 이식**하고, 화면쪽 원본은 지우지 않는다(`DATA_SOURCE=dummy` 대체 경로).
-- [ ] 화면을 서버 값으로 바꿀 때는 `A/views/dashboard.py`와 `A/admin_repository.py` 통계 구역만 수정한다.
-- [ ] `stats/tables`의 전체 테이블 수는 `app.state.store_info.get()["tables"]`에서 읽는다.
+- [x] 라우트는 `B/routers/admin/stats.py`에 추가(수용 단독 파일). 계산 함수는 `B/services/stats.py`에, SQL은 `B/stores/stats.py`에.
+- [x] 화면(`A/dashboard_stats.py`)의 계산을 `sales_insights()`·`_sales_trends()`로 함수 단위 이식하고 서버 자료형에 맞게 적용했다. 화면쪽 원본은 유지한다(`DATA_SOURCE=dummy` 대체 경로).
+- [x] 화면은 `A/views/dashboard.py`와 `A/admin_repository.py` 통계 호출 구역만 수정한다. 주문 목록의 더미 여부와 무관하게 DB 집계를 표시한다.
+- [x] `stats/tables`의 전체 테이블 수는 `app.state.store_info.get()["tables"]`에서 읽는다.
+
+**2026-10-16 3번 구현·검증 기록**
+
+- `StatsStore.sales_orders()`가 주문과 회원 닉네임을 한 번의 읽기 쿼리로 가져온다. 추가 통계에 필요 없는 메뉴 줄·조합 구성은 조회하지 않는다. 주문 저장 담당 파일과 DB 스키마는 변경하지 않았다.
+- 실제 API 경로는 `/admin/api/stats/sales/hourly`, `…/weekday`, `…/trends`, `…/tickets`, `/admin/api/stats/tables`다. 세부 API는 같은 계산의 필요한 항목과 `empty`를 반환한다. 화면은 `/admin/api/stats/insights`를 한 번 호출해 추가 통계 전체를 받는다.
+- 최근 30일은 마지막 주문일 포함 30일, 최근 7일과 이전 7일은 겹치지 않는 기간, 일별 그래프는 최근 14일이다. 매출이 없는 날짜는 0원이다. 일평균·회전율의 일수는 기존 화면과 동일하게 주문이 발생한 날짜 수다.
+- 시각을 KST로 통일하고 UTC·KST·시간대 없는 SQLite 문자열을 모두 처리한다. 비교 매출 0원일 때 증감률, 해당 주문이 없는 집단의 객단가는 `null`이다. 빈 주문 목록은 모든 추가 API에서 `{"empty": true}`로 반환한다.
+- 자체 검토에서 발견한 기존 표시 오류를 수정했다. `오늘 매출`은 실제 KST 오늘 매출, `마지막 영업일 매출`은 마지막 주문일 매출이다. 오늘 주문이 없으면 오늘 매출은 0원이며, 고객 매출·테이블 순위의 제목도 실제 집계일인 마지막 영업일로 명시한다. 화면 상단에 기준일 안내를 표시한다.
+- 등급 미리보기는 저장 없이 적용한다. 테이블 TOP5는 마지막 영업일 주문 건수 순, 동률이면 테이블 번호 순이다. 회원 매출 TOP5는 같은 회원의 반복 주문을 합산하고 마지막 주문 테이블을 표시한다. 비회원은 테이블별로 합산한다.
+- 새 서버 테스트 `BT/test_sooyong_sales_insights.py` **41 passed**. KST 경계, 30일 포함/제외 경계, 정확한 합계·객단가·금액대·회전율, 빈 DB, 0원, 회원/비회원, 등급 미리보기 미저장, 새로고침 반영, 인증 401, 잘못된 기준 422를 확인했다. 기존 통계 테스트와 함께 **66 passed**다.
+- 새 화면 테스트 `T/test_sooyong_sales_insights.py` **5 passed**. 같은 87건 주문의 서버 계산과 기존 `dashboard_stats.summarize()` 전체 항목 일치, 비회원만 있는 경우, 더미 주문 목록이 비어 있어도 DB 그래프 표시, 하위 화면과 새로고침, 오늘/마지막 영업일 구분, 더미 모드 유지를 검증했다. 관련 화면 테스트 총 **16 passed**다.
+- 전체 서버 테스트 **144 passed, 9 skipped**. 전체 화면·통합 테스트 **103 passed, 12 skipped, 7 failed**. 실패는 기존 `T/test_admin_events_page.py`의 룰렛 7개이며, 수정 전 `9b509f6`의 별도 사본에서도 같은 파일의 **7 failed, 11 passed**를 확인했다. 새 skip이나 테스트 삭제는 없다. 초기 임시 폴더 권한 오류는 권한을 확보해 재실행하여 해소했다. 전체 테스트 통과 전에는 PR을 보내지 않는다.
+- 실제 Supabase는 스키마 초기화 없이 읽기 전용 트랜잭션으로 점검했다. 새 5개 세부 API와 묶음 조회가 모두 200이며, 최근 주문 115건·매출 6,543,200원·오늘 매출 136,400원·테이블 30개를 확인했다. 시간대/요일 매출 합계와 금액대 주문 수 합계가 일치한다. 실제 DB 기록은 변경하지 않았다.
+- 화면 캡처는 별도 메모리 DB의 예시 주문 6건으로 촬영했다. `artifacts/sooyong-stats/before.png`는 기존 화면 계산 경로 재현, `after.png`는 DB 집계 전환 후 매출 화면, `tables.png`는 고객·테이블 분석 화면이다. 예시 오늘 매출 145,000원, 최근 30일 매출 251,000원, 최근 평균 객단가 41,833원이다.
 
 ---
 

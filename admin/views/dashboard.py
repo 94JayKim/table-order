@@ -106,7 +106,8 @@ def page_dashboard(repo, sub="한눈에 보기"):
     """첫 화면은 오늘·매출과 매출 추이를 함께 보여 주고, 상세 영역은 사이드바에서 따로 볼 수 있다."""
     s = repo.stats(ss["grade_rule"])
     ai = s["ai"]
-    x = summarize(repo.orders(), repo.members(ss["grade_rule"]))
+    # 회전율의 분모는 주문이 발생한 테이블 수가 아니라 매장에 등록된 전체 테이블 수여야 한다.
+    x = summarize(repo.orders(), repo.members(ss["grade_rule"]), tables=repo.store()["tables"])
     page_head("대시보드", "오늘 매장 현황을 한눈에 확인하세요")
     if sub == "한눈에 보기":
         render_today_sales(s, x)

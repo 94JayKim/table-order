@@ -5,9 +5,9 @@
 
 ## 한 단락 요약
 
-테이블 26개, 뷰 2개, 함수 2개(`set_updated_at`, `member_grade`)로 이뤄진 Postgres 스키마입니다. 매장·메뉴, 회원·QR 로그인·룰렛, 주문·직원 호출, AI 추천 콘텐츠, 관리자(알림·문자·챗봇)를 다룹니다. FastAPI 서버가 서비스 롤로 접속하므로 RLS를 우회하고, 모든 테이블에 RLS를 켜서 브라우저·anon 키 접근을 막으며 손님 화면용 공개 콘텐츠 10개만 anon 읽기를 허용합니다. 정수 ID는 `bigint identity`, 메뉴·카테고리 ID는 기존 문자열(`c1`, `chicken`)을 유지하고, 시각은 `timestamptz`(UTC 저장, 화면에서 KST 변환)입니다.
+테이블 27개, 뷰 2개, 함수 2개(`set_updated_at`, `member_grade`)로 이뤄진 Postgres 스키마입니다. 매장·메뉴, 회원·QR 로그인·룰렛, 주문·직원 호출, AI 추천 콘텐츠, 관리자(알림·문자·챗봇)를 다룹니다. FastAPI 서버가 서비스 롤로 접속하므로 RLS를 우회하고, 모든 테이블에 RLS를 켜서 브라우저·anon 키 접근을 막으며 손님 화면용 공개 콘텐츠 10개만 anon 읽기를 허용합니다. 정수 ID는 `bigint identity`, 메뉴·카테고리 ID는 기존 문자열(`c1`, `chicken`)을 유지하고, 시각은 `timestamptz`(UTC 저장, 화면에서 KST 변환)입니다.
 
-**적용 상태(2026-10-15 확인): 아직 Supabase에 적용되지 않았습니다.** `table-order` 프로젝트에는 기존 테스트 테이블 9개(`members, menus, orders, calls, recommendation_events, sms_logs, content, tablet_logins, store_info`)만 있고, 새 스키마의 테이블은 없습니다. 적용 스레드에서 기존 테이블 삭제 마이그레이션이 두 번 취소돼 중단된 상태입니다. 적용되면 이 절을 갱신하세요.
+**적용 상태(2026-10-16 확인): Supabase `table-order` 프로젝트에 적용돼 있습니다.** 테이블 27개, RLS 전부 켜짐(`coupons`와 룰렛 하루 1회 인덱스는 2026-10-16 마이그레이션 `add_coupons_and_roulette_one_play_per_day`로 추가). 다만 FastAPI 서버(`backend/app/stores/`)는 아직 이 스키마가 아니라 SQLite 호환 저장소를 쓰므로(쿠폰함도 `stores/coupons.py`의 SQLite 테이블로 먼저 구현), 서버를 Supabase 스키마로 옮기는 작업이 남아 있습니다.
 
 ## 목차
 
@@ -31,6 +31,9 @@
 | 관리자 인증 | 모든 개발이 끝난 뒤 마지막(후순위) | `owners`(Supabase Auth)는 스키마에 있지만 당장 쓰지 않음. 기존 `ADMIN_TOKEN` 방식과 병행 가능 |
 | 문자 발송 | 솔라피(Solapi) 확정(발송 확인됨) | `sms_logs`는 공급자와 무관한 구조. 발송 코드는 `backend/app/services/sms.py` |
 | 메뉴·카테고리 ID | 문자열 유지 | 기존 시드·화면 코드와 호환. 새 메뉴 ID는 서버가 `m` + 난수로 생성 |
+| 룰렛 횟수 | 회원당 하루 1회(KST). 같은 날 다른 테이블에서는 돌릴 수 없고 다른 날은 가능 | `table_logins`에 `unique(member_id, login_day) where played_at is not null` 부분 유니크 인덱스. 로그인 시 오늘 이미 돌렸으면 `roulette_eligible=false` |
+| 쿠폰함 | 룰렛 당첨은 바로 적용하지 않고 쿠폰함(`coupons`)에 넣고, 손님이 쿠폰함에서 '사용'하면 장바구니에 적용, 주문이 접수되면 `used_at` 기록 | 룰렛 한 번에 쿠폰 한 장(`table_login_id` unique). 한 테이블에 앉은 회원들의 쿠폰이 한 쿠폰함에 보임. 유효기간은 정책 미정(`expires_at` null = 없음) |
+| 테이블 누적 주문 | 해당 테이블의 주문 중 `orders.created_at`이 그 테이블의 현재 로그인 기록(`table_logins`) 가장 이른 `logged_in_at` 이후인 것만 합산 | 별도 테이블 세션 테이블을 만들지 않음. 같은 테이블에 새 손님이 로그인하면 `table_logins`가 새로 쌓이는 시점부터 다시 센다 |
 | 룰렛 칸 개수(2~8)·가중치 합 > 0 | SQL 제약이 아니라 서버에서 검증 | 여러 행에 걸친 규칙이라서 |
 | `staff_calls.done_at` | 처리 화면은 제거됐지만 컬럼은 남김 | 되살릴 때 마이그레이션 불필요 |
 | 전화번호 | 평문 저장(현재와 동일) | 정식 운영 전에 암호화·보관 기간 결정 필요 |
@@ -53,6 +56,7 @@
 | `login_sessions` | QR 로그인 진행 상태(서버 메모리에서 이전). JWT는 저장하지 않음 | token, secret, table_no, status(`waiting/scanned/logged_in/rejected/expired`), blocked_member_ids[], marketing_consent, expires_at |
 | `roulette_prizes` | 룰렛 칸 구성 | label, short_text, kind(`discount`/`free`), percent, menu_id(서비스 메뉴), weight, sort_order |
 | `table_logins` | 테이블 로그인 이력 + 룰렛 참여·당첨 | table_no, member_id, login_day(하루 1회 규칙), roulette_eligible, prize_id, prize_text(문구 사본), played_at |
+| `coupons` | 쿠폰함: 룰렛 당첨 쿠폰과 사용 여부 | member_id, table_login_id(unique), table_no, kind(`discount`/`free`), label, percent, menu_id, issued_at, expires_at, used_at, used_order_id |
 
 ### 주문·직원 호출
 
@@ -91,6 +95,7 @@ categories 1─* menus 1─* order_items *─1 orders *─1 members
                  │            └─* order_item_components
                  └─ roulette_prizes(서비스 칸)        orders *─1 recommendation_events
 members 1─* table_logins *─1 roulette_prizes
+members 1─* coupons *─1 table_logins, coupons *─0..1 orders(사용한 주문)
 members 1─* sms_log_recipients *─1 sms_logs
 auth.users 1─1 owners, 1─* chat_sessions 1─* chat_messages
 login_sessions ─ members(로그인 완료 시)
@@ -114,12 +119,13 @@ API 화면 구분은 v6 목록표의 번호(1-1 … 2-10)입니다. "집계"는 
 |---|---|---|
 | 1-1 스플래시 | `GET /v1/store` | `store_info` |
 | | `GET /v1/roulette/prizes` | `roulette_prizes` |
-| | `GET /v1/roulette/status`, `POST /v1/roulette/plays` | `table_logins`, `roulette_prizes` |
+| | `GET /v1/roulette/status`, `POST /v1/roulette/plays` | `table_logins`, `roulette_prizes` (당첨 시 `coupons`에 쿠폰 발급) |
+| | `GET /v1/coupons`, `GET /tables/{n}/coupons` (쿠폰함 조회. v6 목록표에 없던 API) | `coupons` |
 | | `POST /v1/auth/qr`, `GET /v1/auth/qr/{secret}` | `login_sessions` |
 | | `GET /v1/auth/kakao/start·continue·callback` | `login_sessions`, `members` (`visit_count` +1) |
 | | `GET /v1/members/me` | `members` |
 | 1-2 주문 | `GET /v1/categories`, `GET /v1/menus` | `categories`, `menus` |
-| | `POST /v1/orders` | `orders`, `order_items`, `order_item_components` |
+| | `POST /v1/orders` | `orders`, `order_items`, `order_item_components` (요청의 `coupon_ids`는 `coupons.used_at`·`used_order_id`로 기록) |
 | 1-3 주문내역 | `GET /v1/tables/{tableId}/orders` | `orders`, `order_items` |
 | 1-4 직원 호출 | `GET /v1/staff-call-items`, `POST /v1/staff-calls` | `staff_call_items`, `staff_calls` |
 | 1-5 AI 추천 | `GET /v1/ai/questions` | `quiz_questions`, `quiz_options` |
@@ -168,7 +174,7 @@ v6에서 "뺄" 처리된 API(`orders/{orderId}`, 메뉴군·날씨별 매출 등
 
 ## 열린 사항
 
-1. **Supabase 적용**: 기존 테이블 9개를 지우고 새 스키마를 적용하는 작업이 남아 있습니다(위 적용 상태 참고).
+1. **서버를 Supabase 스키마로 이전**: 스키마는 Supabase에 적용됐지만 서버 저장소 코드는 아직 SQLite 호환 구조입니다(위 적용 상태 참고).
 2. **데이터 이전**: `content` 테이블과 `backend/app/seed/*.json`(메뉴·카테고리·룰렛·질문·규칙)을 새 테이블로 옮기는 시드·이전 스크립트가 아직 없습니다.
 3. **개인정보**: 전화번호 암호화·보관 기간.
 4. **검증 이력**: Postgres 16에서 스크립트를 두 번 실행해 오류가 없었고(재실행 가능), 제약·트리거·뷰를 샘플 데이터로 확인했습니다. Supabase에서의 실행은 아직 확인되지 않았습니다.

@@ -140,6 +140,9 @@ create table if not exists table_logins (
   played_at        timestamptz,
   unique (table_no, member_id, login_day)
 );
+-- 룰렛은 회원당 하루 1회: 같은 날 다른 테이블에서도 돌릴 수 없고, 다음 날은 가능 (login_day 는 KST 기준 날짜)
+create unique index if not exists table_logins_one_play_per_day on table_logins (member_id, login_day)
+  where played_at is not null;
 
 -- =====================================================================
 -- 3. 주문·직원 호출
@@ -195,6 +198,30 @@ create table if not exists order_item_components (
   qty            smallint not null check (qty >= 1)
 );
 create index if not exists order_item_components_item_idx on order_item_components (order_item_id);
+
+-- 쿠폰함: GET /api/v1/coupons, GET /api/tables/{n}/coupons, POST /api/orders(coupon_ids)
+-- 룰렛에 당첨되면 쿠폰이 한 장 생기고(table_login_id 로 어느 룰렛 기록인지 연결), 주문에 쓰면 used_at 이 채워진다.
+create table if not exists coupons (
+  id             bigint generated always as identity primary key,
+  member_id      bigint not null references members(id) on delete cascade,
+  table_login_id bigint unique references table_logins(id) on delete set null,  -- 룰렛 한 번에 쿠폰 한 장
+  table_no       integer not null check (table_no >= 1),                       -- 받은 테이블
+  prize_id       bigint references roulette_prizes(id) on delete set null,
+  kind           text not null check (kind in ('discount', 'free')),
+  label          text not null,                                                -- 당첨 안내문 사본(칸이 바뀌어도 유지)
+  emoji          text not null default '🎁',
+  percent        smallint check (percent between 1 and 100),                   -- 할인 쿠폰
+  menu_id        text references menus(id) on update cascade on delete set null,  -- 서비스 쿠폰의 무료 메뉴
+  issued_at      timestamptz not null default now(),
+  expires_at     timestamptz,                                                  -- 유효기간 정책 미정: null = 없음
+  used_at        timestamptz,                                                  -- null 이면 사용 가능
+  used_order_id  bigint references orders(id) on delete set null,
+  check ((kind = 'discount' and percent is not null) or (kind = 'free' and percent is null))
+);
+create index if not exists coupons_member_idx on coupons (member_id, used_at);
+create index if not exists coupons_order_idx on coupons (used_order_id);
+create index if not exists coupons_menu_idx on coupons (menu_id);
+create index if not exists coupons_prize_idx on coupons (prize_id);
 
 -- 3-3. 직원 호출 (POST /api/v1/staff-calls, GET /api/v1/staff-call-items)
 create table if not exists staff_call_items (
@@ -374,7 +401,7 @@ declare t text;
 begin
   foreach t in array array[
     'store_info','categories','menus','members','login_sessions','roulette_prizes','table_logins',
-    'recommendation_events','orders','order_items','order_item_components','staff_call_items','staff_calls',
+    'recommendation_events','orders','order_items','order_item_components','coupons','staff_call_items','staff_calls',
     'quiz_questions','quiz_options','weather_types','weather_current','recommendation_rules',
     'owners','app_settings','alerts','sms_logs','sms_log_recipients','external_context','chat_sessions','chat_messages']
   loop

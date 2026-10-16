@@ -6,7 +6,7 @@
 |---|---|
 | 경로 표기 | `B/`=`backend/app/` · `A/`=`admin/` · `U/`=`user/` · `T/`=루트 `tests/` · `BT/`=`backend/tests/` |
 | 브랜치 | 본 리포를 포크 → 작업마다 `feat/한글설명` 새 브랜치 → PR은 본 리포 `dev`로만. `dev`·`main`에서 바로 작업하지 않는다 |
-| 더미 주석처리 (더미 기능만, 구현보다 먼저) | ① 라우터의 `return dummy.xxx(...)` 줄을 `#`으로 주석처리하고 그 아래에 `raise NotImplementedError`를 둔다 ② `B/dummy.py`의 해당 함수와 `DUMMY_ENDPOINTS` 줄을 **같이** 주석처리한다(한쪽만 하면 `test_every_listed_dummy_function_exists`가 실패) ③ 구현·테스트가 끝나면 주석처리해 둔 줄을 지운다 |
+| 더미 주석처리 (더미 기능만, 구현보다 먼저) | ① 라우터의 `return dummy.xxx(...)` 줄을 `#`으로 주석처리하고 그 아래에 `raise NotImplementedError`를 둔다 ② `B/dummy/` 안의 본인 담당 `*_data.py`(예: `menu_data.py`)에서 해당 함수와 그 파일의 `ENDPOINTS` 줄을 **같이** 주석처리한다(한쪽만 하면 `test_every_listed_dummy_function_exists`가 실패. `dummy/__init__.py`는 고치지 않는다) ③ 구현·테스트가 끝나면 주석처리해 둔 줄을 지운다 |
 | 건드리지 않는 것 | 화면쪽 더미(`U/menu_data.py`, `A/admin_dummy_data.py`)는 서버 없이도 화면이 뜨게 하는 대체 데이터라 지우지 않는다 |
 | SQL 위치 | SQL은 `B/stores/`에서만 쓴다. 라우터에는 쓰지 않는다. 테이블 정의 기준은 `docs/db/fbgrowth_schema.sql` |
 | 테스트 | 서버 `cd backend && uv run pytest -q` · 화면+통합 `python -m pytest tests -q`. 둘 다 실패 없이 통과해야 PR을 보낸다. 테스트를 skip·삭제해서 통과시키지 않는다(더미 교체 시 `skip` 제거만 허용) |
@@ -31,8 +31,8 @@
 | `B/stores/shop_orders.py` | 수용(통계가 주문을 읽음) | 재현만 수정. 수용은 `B/stores/stats.py`(신규)에서 따로 읽는다 |
 | `B/stores/roulette_prizes.py`(신규, 석원) | 석원 | 재현은 `list()`만 호출. 시그니처는 석원과 먼저 합의 |
 | `B/services/weather.py`(신규) | 성호가 가져다 씀 | 재현이 먼저 만들고 성호는 import만 한다. 함수 이름이 바뀌면 알려 준다 |
-| `B/routers/user.py` | 서준(`/menus`), 석원(`/calls`) | 본인 함수만 수정. 새 엔드포인트는 새 라우터 파일에 만든다 |
-| `B/dummy.py` | 서준·수용·석원 | 본인 함수·`DUMMY_ENDPOINTS` 줄만 다룬다 |
+| `B/routers/` | 서준(`menus.py`), 석원(`staff_calls.py`) | 본인 파일만 수정. 재현은 `store.py`·`orders.py`·`coupons.py`·`roulette.py`·`ai.py`. 쿠폰함·룰렛이 쓰는 `tablet_rows`는 `user.py`(성호 파일)에서 가져다 쓰기만 한다 |
+| `B/dummy/` | 서준·수용·석원 | 본인 담당 `*_data.py`의 함수·`ENDPOINTS` 줄만 다룬다 (`store_data`, `coupon_data`, `order_data`, `recommend_data`) |
 
 ---
 
@@ -69,13 +69,13 @@
 **흐름**
 ```
 UI(스플래시 매장명) → U/user_repository.py _fetch_content → GET /api/v1/store
- → B/routers/user.py store_info → B/stores/store_info.py get() → DB(store_info 1행)
+ → B/routers/store.py store_info → B/stores/store_info.py get() → DB(store_info 1행)
  → {name, branch, slogan, tables} → U/state/context.py STORE → UI 매장명·지점
 ```
 
 **상세 설명 / TODO**
 
-- [ ] 더미 주석처리: `B/routers/user.py`의 `dummy.store()` 줄, `B/dummy.py`의 `store()`와 `DUMMY_ENDPOINTS`의 `"GET /api/store, /api/v1/store"` 줄.
+- [ ] 더미 주석처리: `B/routers/store.py`의 `dummy.store()` 줄, `B/dummy/store_data.py`의 `store()`와 `ENDPOINTS`의 `"GET /api/store, /api/v1/store"` 줄.
 - [ ] 라우터에서 `request.app.state.store_info.get()`을 돌려준다(`StoreInfoStore.get`은 이미 구현돼 있음).
 - [ ] `BT/test_dummy_get.py`의 `test_user_get_dummies`에서 store 줄을 빼고, `BT/test_store_endpoint.py`로 대체됐는지 확인.
 
@@ -108,14 +108,14 @@ UI(스플래시 매장명) → U/user_repository.py _fetch_content → GET /api/
 ```
 UI(주문 확인 다이얼로그 · 주문하기) → U/ui/dialogs.py → ctx.REPO.create_order (U/user_repository.py)
  → POST /api/orders {table_no, lines, total, coupon_ids} (+Bearer 토큰이 있으면 회원)
- → B/routers/user.py create_order → B/stores/shop_orders.py add_order
+ → B/routers/orders.py create_order → B/stores/shop_orders.py add_order
  → DB: orders INSERT → order_items INSERT(줄마다) → order_item_components INSERT(조합 구성)
  → {no, ai_combo, used_coupon_ids} → UI "주문 번호 N" + 장바구니 비우기
 ```
 
 **상세 설명 / TODO**
 
-- [ ] 더미 주석처리: `create_order`의 `dummy.order_created(...)` 줄, `dummy.py`의 `order_created`와 `"POST /api/orders"` 줄.
+- [ ] 더미 주석처리: `create_order`의 `dummy.order_created(...)` 줄, `B/dummy/order_data.py`의 `order_created`와 `"POST /api/orders"` 줄.
 - [ ] `B/stores/shop_orders.py`의 `add_order`, `order`, `orders` 구현(파일 안 TODO 주석 그대로). `menus`에 있는 id만 `menu_id`로 연결, 없으면 null.
 - [ ] 라우터 TODO대로 `shop.add_order(table_no, lines, total, member_id)` 호출.
 - [ ] 주의: `ShopStore`가 메뉴를 쓰려면 서준의 `seed_menus()`가 필요하다. 서준 작업 전에는 `menu_id`를 null로 두고 테스트한다.
@@ -158,7 +158,7 @@ UI(주문 이력 탭) → A/views/orders.py → repo.orders() (A/admin_repositor
 
 **상세 설명 / TODO**
 
-- [ ] 더미 주석처리: `B/routers/admin/orders.py`의 `dummy.orders()`/`dummy.members()` 사용부, `dummy.py`의 `orders`·`members`(수용의 통계 더미가 `members`를 쓰므로 수용과 순서를 맞춘다)와 `"GET /admin/api/orders"` 줄.
+- [ ] 더미 주석처리: `B/routers/admin/orders.py`의 `dummy.orders()`/`dummy.members()` 사용부, `B/dummy/order_data.py`의 `orders`·`members`(수용의 통계 더미가 `members`를 쓰므로 수용과 순서를 맞춘다)와 `"GET /admin/api/orders"` 줄.
 - [ ] 응답 모양은 `dummy.orders()`와 같게 유지(키: `id, table_no, member_id, total, roulette_discount_percent, ai_combo, recommendation_event_id, ts, lines`).
 
 ---
@@ -186,14 +186,14 @@ UI(주문 이력 탭) → A/views/orders.py → repo.orders() (A/admin_repositor
 ```
 UI(룰렛 돌리기) → U/ui/roulette.py → U/state/roulette.py spin_roulette → U/server.py save_prize
  → PUT /api/tables/{n}/logins/prize {member_id, prize, kind, percent|item_id}
- → B/routers/user.py tablet_login_prize → (검사) B/stores/coupons.py issued_today → B/stores/tablet_logins.py set_prize
+ → B/routers/roulette.py tablet_login_prize → (검사) B/stores/coupons.py issued_today → B/stores/tablet_logins.py set_prize
  → B/stores/coupons.py issue → DB(table_logins UPDATE, coupons INSERT) → {ok, coupon}
  → U/state/coupons.py add_coupon → UI 쿠폰함에 쿠폰 추가
 ```
 
 **상세 설명 / TODO**
 
-- [ ] 더미 주석처리: `tablet_login_prize`의 `dummy.prize_saved(...)`, `dummy.py`의 `prize_saved`·`"PUT /api/tables/{table_no}/logins/prize"` 줄.
+- [ ] 더미 주석처리: `tablet_login_prize`의 `dummy.prize_saved(...)`, `B/dummy/coupon_data.py`의 `prize_saved`·`"PUT /api/tables/{table_no}/logins/prize"` 줄.
 - [ ] `tablet_logins.set_prize`, `coupons.issue`, `coupons.get` 구현(파일 안 TODO). 라우터 TODO 1~5 순서대로.
 - [ ] **쿠폰과 룰렛 칸 연결**: 뼈대에 자리를 이미 넣었다. `set_prize(table_no, member_id, prize, prize_id=None)`는 기록한 `table_logins` 행의 id를 돌려주고, `coupons.issue(..., prize_id=None, table_login_id=None)`에 그 값을 넣는다. `coupons.table_login_id`가 UNIQUE라 "룰렛 1번 = 쿠폰 1장"을 DB가 보장한다. 요청 `PrizeIn.prize_id`는 선택이라, 석원의 `roulette_prizes.list()`가 칸 `id`를 내려주기 전에는 화면이 보내지 않아도 동작한다(그 경우 `prize_id`는 null). 칸 `id`를 내려줄지는 석원과 합의한다.
 - [ ] `coupons.issued_today`와 `tablet_logins.record/list`는 성호의 QR 로그인이 쓰므로 이름·동작을 바꾸지 않는다.
@@ -233,14 +233,14 @@ UI(룰렛 돌리기 버튼) → U/state/roulette.py spin_roulette → (새) serv
 **흐름**
 ```
 UI(🎟️ 쿠폰함 팝업) → U/ui/coupons.py → U/state/coupons.py load_coupons → server.table_coupons
- → GET /api/tables/{n}/coupons → B/routers/user.py table_coupons (_tablet_rows 로 접근 확인)
+ → GET /api/tables/{n}/coupons → B/routers/coupons.py table_coupons (user.py 의 tablet_rows 로 접근 확인)
  → B/stores/coupons.py for_members → DB(coupons JOIN members) → [{id, member_id, nickname, kind, label, used_at...}]
  → UI 쿠폰 카드(사용/취소 버튼)
 ```
 
 **상세 설명 / TODO**
 
-- [ ] 더미 주석처리: `my_coupons`, `table_coupons`의 `dummy.*` 줄과 `dummy.py`의 `member_coupons`·`table_coupons`·`_coupons`·`_MEMBER_NAMES`, `DUMMY_ENDPOINTS`의 두 줄.
+- [ ] 더미 주석처리: `my_coupons`, `table_coupons`의 `dummy.*` 줄과 `B/dummy/coupon_data.py`의 `member_coupons`·`table_coupons`·`_coupons`·`_MEMBER_NAMES`, `coupon_data.py`의 `ENDPOINTS` 두 줄.
 - [ ] `coupons.for_member`, `coupons.for_members` 구현. 두 라우트의 별칭(`/v1/coupons`, `/coupons`)은 그대로 둔다.
 
 ### 3-4. `POST /api/orders` 쿠폰 사용 (`coupon_ids`)
@@ -314,13 +314,13 @@ UI(AI 질문 시작) → U/views/ai.py → ctx.QUESTIONS/WEATHER/RULES ← U/use
 **흐름**
 ```
 UI(추천 조합 카드 표시) → U/views/ai.py log_recommendation → ctx.REPO.log_recommendation
- → POST /api/recommendations → B/routers/user.py log_recommendation → B/stores/shop_recommendations.py add_recommendation
+ → POST /api/recommendations → B/routers/ai.py log_recommendation → B/stores/shop_recommendations.py add_recommendation
  → DB(recommendation_events INSERT) → {id}
 ```
 
 **상세 설명 / TODO**
 
-- [ ] 더미 주석처리: `log_recommendation`의 `dummy.recommendation_logged()`, `dummy.py`의 `recommendation_logged`·`"POST /api/recommendations"` 줄.
+- [ ] 더미 주석처리: `log_recommendation`의 `dummy.recommendation_logged()`, `B/dummy/recommend_data.py`의 `recommendation_logged`·`"POST /api/recommendations"` 줄.
 - [ ] `add_recommendation`, `recommendation_count` 구현(파일 안 TODO). 새 경로 `/api/v1/ai/recommendations`는 `B/routers/ai.py`에 같은 함수를 연결한다(기존 경로 별칭 유지).
 - [ ] `orders.recommendation_event_id`로 주문과 추천을 연결하는 부분은 4-3에서.
 

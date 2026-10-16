@@ -11,8 +11,8 @@
 
 | 번호 | 증상 | 원인 | 해결 | 담당 |
 |---|---|---|---|---|
-| G1 | PR 머지 때 `backend/app/dummy.py` 충돌 | 더미 함수와 `DUMMY_ENDPOINTS` 줄이 한 파일에 붙어 있어 이웃한 줄을 지우면 겹침 | **내 함수와 내 `DUMMY_ENDPOINTS` 줄만** 지운다(빈 줄·이웃 줄은 그대로). PR을 작게 자주 보내고, 보내기 전에 `dev`를 먼저 받아 온다 | 재·수·준·석 |
-| G2 | `backend/app/routers/user.py` 충돌 | 손님용 라우트(메뉴·주문·룰렛·쿠폰·직원호출·AI)가 한 파일 | 내 라우트 함수 안쪽만 고친다. 함수 순서 바꾸기·import 정렬 금지. 새 라우트는 파일 끝이 아니라 **관련 함수 바로 아래**에 추가하면 같은 위치 추가 충돌이 줄어든다 | 재·준·석 |
+| G1 | PR 머지 때 `backend/app/dummy/` 충돌 | **분리 완료**: 담당별 `*_data.py`로 나뉘어 거의 겹치지 않음. 겹칠 수 있는 곳은 `content_data.py`(준·석·재)와 `order_data.py`의 `members`(재·수) | **내 `*_data.py`의 함수와 `ENDPOINTS` 줄만** 지운다. `dummy/__init__.py`는 고치지 않는다. PR을 작게 자주 보내고, 보내기 전에 `dev`를 먼저 받아 온다 | 재·수·준·석 |
+| G2 | `backend/app/routers/` 손님 API 충돌 | **분리 완료**: 기능별 파일(`menus.py`, `orders.py` 등)로 나뉨. 회원·로그인 기록은 `user.py`(성호) | 내 라우트 함수 안쪽만 고친다. 함수 순서 바꾸기·import 정렬 금지. 새 라우트는 파일 끝이 아니라 **관련 함수 바로 아래**에 추가하면 같은 위치 추가 충돌이 줄어든다 | 재·준·석 |
 | G3 | `factory.py`, `routers/admin/__init__.py` 충돌 | 새 라우터 등록 줄을 여러 명이 같은 위치에 추가 | 새 라우터 파일이 필요하면 **한 사람씩 순서대로** 머지한다. 분배 문서의 "선작업 PR"(빈 라우터 등록)이 머지되기 전에는 이 두 파일을 서로 알리고 수정 | 전 |
 | G4 | `PUT /admin/api/content/{name}`과 `seed/content.json`을 세 명이 고침 | `content`는 카테고리(준)·룰렛/직원호출 항목(석)·AI 질문/규칙(재)이 한 키 묶음 | 각자 **본인 키만** 지운다. 마지막에 남은 키가 없는지 한 사람이 정리한다 | 재·준·석 |
 | G5 | `user/user_repository.py`, `admin/admin_repository.py`의 `ENDPOINTS`/호출 목록 충돌 | 화면 호출 모음이 한 파일 | 내 호출 줄만 추가·수정. 응답 모양은 더미와 같게 유지(계약 테스트가 확인) | 전 |
@@ -42,7 +42,7 @@
 
 | 번호 | 증상 | 원인 | 해결 | 담당 |
 |---|---|---|---|---|
-| P1 | `INSERT` 뒤 id가 `None` | `db.run`은 `SERIAL_TABLES`에 있는 테이블만 `RETURNING id`를 붙임. 아직 없는 것: `roulette_prizes`, `staff_call_items`, `quiz_options`, `chat_messages`, `alerts` | 해당 테이블에 INSERT 후 id가 필요하면 `stores/db.py`의 `SERIAL_TABLES`에 이름 추가(한 줄). 공용 파일이므로 **한 사람이 먼저 PR로 넣는다**(성호 제안). id가 필요 없으면 불필요 | 성·석·수 |
+| P1 | `INSERT` 뒤 id가 `None` | `db.run`은 `SERIAL_TABLES`에 있는 테이블만 `RETURNING id`를 붙임 | **해결됨**: id가 자동 증가인 테이블(`roulette_prizes`, `staff_call_items`, `quiz_options`, `chat_messages`, `alerts` 포함)을 모두 `SERIAL_TABLES`에 넣었고, 새 테이블이 빠지면 `test_serial_tables_cover_every_identity_table_in_schema`가 실패한다 | 전 |
 | P2 | `chat_sessions` INSERT 후 id를 못 받음 | id가 `uuid`(기본값 `gen_random_uuid()`)라 `SERIAL_TABLES` 방식이 안 맞음 | 코드에서 `uuid.uuid4()`로 만들어 INSERT하고 그 값을 반환(SQLite도 동일 동작) | 성 |
 | P3 | `operator does not exist: boolean = integer` 또는 `column "is_soldout" is of type boolean but expression is of type integer` | SQLite 칸은 `INTEGER`, Postgres는 `boolean`. 대상: `is_soldout`, `set_ok`, `ai_combo`, `roulette_eligible` | SQL에 `0/1`을 쓰지 말고 **파라미터로 Python `bool`** 전달. 읽을 때는 `bool(row[...])`로 통일(SQLite는 0/1, Postgres는 True/False) | 준·재·석 |
 | P4 | `tags`/`items` 저장 오류 또는 문자열 `'["a"]'`가 배열로 들어감 | Postgres는 `text[]`, SQLite는 JSON 문자열 | 저장은 `db.to_list(...)`, 읽기는 `db.from_list(...)`. 대상: `menus.tags`, `staff_calls.items`, 후속 `combo_ids` 등 | 준·재·석 |

@@ -6,7 +6,7 @@
 |---|---|
 | 경로 표기 | `B/`=`backend/app/` · `A/`=`admin/` · `U/`=`user/` · `T/`=루트 `tests/` · `BT/`=`backend/tests/` |
 | 브랜치 | 본 리포를 포크 → 작업마다 `feat/한글설명` 새 브랜치 → PR은 본 리포 `dev`로만. `dev`·`main`에서 바로 작업하지 않는다 |
-| 더미 주석처리 (더미 기능만, 구현보다 먼저) | ① 라우터의 `return dummy.xxx(...)` 줄을 `#`으로 주석처리하고 그 아래에 `raise NotImplementedError`를 둔다 ② `B/dummy.py`의 해당 함수와 `DUMMY_ENDPOINTS` 줄을 **같이** 주석처리한다(한쪽만 하면 `test_every_listed_dummy_function_exists`가 실패) ③ 구현·테스트가 끝나면 주석처리해 둔 줄을 지운다 |
+| 더미 주석처리 (더미 기능만, 구현보다 먼저) | ① 라우터의 `return dummy.xxx(...)` 줄을 `#`으로 주석처리하고 그 아래에 `raise NotImplementedError`를 둔다 ② `B/dummy/` 안의 본인 담당 `*_data.py`(예: `menu_data.py`)에서 해당 함수와 그 파일의 `ENDPOINTS` 줄을 **같이** 주석처리한다(한쪽만 하면 `test_every_listed_dummy_function_exists`가 실패. `dummy/__init__.py`는 고치지 않는다) ③ 구현·테스트가 끝나면 주석처리해 둔 줄을 지운다 |
 | 건드리지 않는 것 | 화면쪽 더미(`U/menu_data.py`, `A/admin_dummy_data.py`)는 서버 없이도 화면이 뜨게 하는 대체 데이터라 지우지 않는다 |
 | SQL 위치 | SQL은 `B/stores/`에서만 쓴다. 라우터에는 쓰지 않는다. 테이블 정의 기준은 `docs/db/fbgrowth_schema.sql` |
 | 테스트 | 서버 `cd backend && uv run pytest -q` · 화면+통합 `python -m pytest tests -q`. 둘 다 실패 없이 통과해야 PR을 보낸다. 테스트를 skip·삭제해서 통과시키지 않는다(더미 교체 시 `skip` 제거만 허용) |
@@ -23,7 +23,7 @@
 | 2 | 3. AI 문자 후보 · 외부 정보(날씨·행사) | 미구현 | 날씨는 재현이 만드는 `B/services/weather.py`를 가져다 씀 |
 | 3 | 4. AI 챗봇 | 미구현 | 수용의 `B/services/stats.py`를 호출해 매출을 답함 |
 | 4 | 5. 관리자 로그인 | 미구현 | **모든 개발이 끝난 뒤 마지막에** (AGENTS.md 규칙) |
-| 선작업 | `B/dummy.py`·`B/routers/user.py` 분리 PR (제안 승인 시) | 대기 | 팀원이 구현을 시작하기 전에 먼저 머지 |
+| 선작업 | `B/dummy/`·`B/routers/` 분리 PR | 완료(PR 머지 후 시작) | `dummy.py`는 `B/dummy/*_data.py`로, `user.py`는 기능별 라우터로 나뉨. 마케팅 화면(`marketing*.py`)과 `admin_repository.py` 분리는 하지 않음 |
 
 ---
 
@@ -215,7 +215,7 @@ UI(챗봇 탭 · 질문 입력) → A/views/marketing.py marketing_chatbot_tab �
   - uuid는 Supabase 대시보드 Authentication > Users에서 복사해 각자 `backend/.env`에만 넣는다(코드·커밋·화면·로그에 쓰지 않는다. DB 스키마는 바꾸지 않는다).
   - `B/stores/chat.py`의 `create_session`이 `settings.chat_owner_id`를 `owner_id`로 넣는다. 값이 비어 있으면 세션 생성은 "CHAT_OWNER_ID 설정이 필요합니다"라는 오류로 돌려주고 500을 내지 않는다.
   - 로컬 SQLite로 개발할 때는 `auth.users` FK가 없으므로 아무 uuid 문자열이어도 동작한다. Supabase에서는 실제 존재하는 uuid여야 한다.
-  - `chat_sessions.id`는 uuid라 `SERIAL_TABLES`에 없다. `uuid.uuid4()`로 코드에서 만들어 넣고 그 값을 반환한다(`chat_messages`는 `SERIAL_TABLES`에 추가 필요).
+  - `chat_sessions.id`는 uuid라 `SERIAL_TABLES`에 없다. `uuid.uuid4()`로 코드에서 만들어 넣고 그 값을 반환한다(`chat_messages`는 이미 `SERIAL_TABLES`에 들어 있음).
   - 5번(관리자 로그인)을 할 때 `require_admin`이 돌려주는 사용자 id로 교체하고 `CHAT_OWNER_ID`는 제거한다.
 - [ ] `B/routers/admin/chat.py`(신규) 5개 엔드포인트. 없는 세션이면 404.
 - [ ] `B/services/chat.py`(신규): 오늘 매출 등은 `B/services/stats.py`(수용)의 함수를 **호출만** 한다. 수용이 구현하기 전에는 주문 합계를 직접 간단히 계산하지 말고, 해당 요약 항목은 "아직 집계 전"으로 두고 진행한다.

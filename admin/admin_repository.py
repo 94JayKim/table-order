@@ -31,7 +31,7 @@ from shared import api  # noqa: E402
 ENDPOINTS = {
     "store": "/api/v1/store",
     "menus": "/admin/api/menus",              # GET {categories, menus} / PUT·DELETE /{id}
-    "roulette": "/api/content/roulette_prizes",  # GET 칸 목록 / PUT /admin/api/content/roulette_prizes 통째로 교체
+    "roulette": "/api/v1/roulette/prizes",  # GET 칸 목록 / PUT 관리자 경로로 전체 교체
     "categories": "/api/content/categories",  # GET 전체 목록(가상 카테고리 포함) / PUT /admin/api/content/categories 통째로 교체
     "members": "/admin/api/members",          # GET ?repeat&regular&dormant
     "orders": "/admin/api/orders",
@@ -82,7 +82,7 @@ class ApiBackend:
         return api.get(ENDPOINTS["roulette"])
 
     def save_roulette_prizes(self, prizes):
-        return api.put("/admin/api/content/roulette_prizes", self.token, json=prizes)
+        return api.put("/admin/api/owner/roulette/prizes", self.token, json=prizes)
 
     def save_menu(self, menu_id, fields):
         return api.put(f"{ENDPOINTS['menus']}/{menu_id}", self.token, json=fields)

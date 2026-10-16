@@ -146,7 +146,7 @@
 | `U/user_repository.py` | 재현(주문·추천), 석원(직원 호출), 서준(메뉴 불러오기 `load_content`) | 중간: 한 클래스 3개에 메서드가 같은 순서로 반복됨 | 본인 기능의 메서드만 수정하고, 새 메서드는 파일 끝에 추가 |
 | `U/app.py` | 거의 없음 | 낮음 | 진입점이라 수정하지 않음 |
 | `BT/test_dummy_get.py` , `BT/test_shop_admin.py` , `T/test_data_source.py` , `T/test_admin_data_source.py` , `T/test_qr_login_e2e.py` | 해당 기능을 교체하는 모두 (`skip` 제거 때문) | 중간: 한 파일에 여러 담당의 테스트가 섞임 | 본인 테스트 함수의 `skip` 줄만 지우고, 새 테스트는 본인 이름의 새 파일(예: `BT/test_roulette.py`)에 작성 |
-| `docs/DB_SCHEMA.md` , `docs/db/fbgrowth_schema.sql` , `AGENTS.md` | 스키마·규칙을 바꾸는 사람 | 낮음~중간: 드물게만 수정 | 스키마를 바꾸면 해당 변경을 먼저 팀에 알리고, 표 한 구역만 수정하는 작은 PR로 먼저 머지 |
+| `docs/DB_설계.md` , `docs/db/fbgrowth_schema.sql` , `AGENTS.md` | 스키마·규칙을 바꾸는 사람 | 낮음~중간: 드물게만 수정 | 스키마를 바꾸면 해당 변경을 먼저 팀에 알리고, 표 한 구역만 수정하는 작은 PR로 먼저 머지 |
 
 ## 코드 분리 제안 (1·2번은 실행 완료, 3·4번은 하지 않음)
 

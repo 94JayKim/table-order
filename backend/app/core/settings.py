@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./app.db"
     cors_origins: list[str] = ["http://localhost:8501", "http://localhost:8502"]
     admin_token: str = "change-me"
+    dev_test_button: bool = False  # 포크·DB 연결 흐름을 확인할 때만 여는 개발 전용 기능
 
     store_name: str = "역전할머니맥주"
     store_branch: str = "홍대점"
@@ -46,7 +47,6 @@ class Settings(BaseSettings):
     sms_monthly_limit: int = 50
     lms_monthly_limit: int = 10
     sms_dry_run: bool = True  # True면 솔라피를 호출하지 않고 로그만 남긴다
-    dev_test_button: bool = False  # 개발 흐름 확인용 DB 테스트 경로는 기본적으로 닫는다
 
     @property
     def supabase_enabled(self) -> bool:

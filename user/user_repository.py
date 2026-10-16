@@ -34,7 +34,6 @@ ENDPOINTS = {
     "orders": "/api/orders",                  # POST
     "calls": "/api/calls",                    # POST
     "recommendations": "/api/recommendations",  # POST (추천 노출 기록)
-    "dev_db_test": "/api/dev/db-test",
 }
 CONTENT_KEYS = ("categories", "roulette_prizes", "staff_calls", "quiz_questions", "weather", "rules")
 MODES = ("dummy", "api", "auto")
@@ -90,6 +89,9 @@ class DummyRepository:
     def log_recommendation(self, table_no, params, combo_ids, token):
         return None
 
+    def db_test(self):
+        return {"result": 0, "error": "더미 데이터 모드에서는 DB에 연결하지 않습니다."}
+
 
 @st.cache_data(ttl=10, show_spinner=False)
 def _fetch_content() -> dict:
@@ -136,9 +138,9 @@ class ApiRepository:
                              json={"table_no": table_no, "params": params, "combo_ids": combo_ids})
         return r["id"] if r else None
 
-    def run_dev_db_test(self):
-        """개발 버튼에서만 호출하는 DB 쓰기·읽기 확인 API."""
-        return api.post(ENDPOINTS["dev_db_test"])
+    def db_test(self):
+        """개발 전용 API를 호출한다. 오류는 화면에서 이유를 표시할 수 있도록 그대로 전달한다."""
+        return api.post("/api/dev/db-test")
 
 
 class AutoRepository:
@@ -167,6 +169,10 @@ class AutoRepository:
 
     def log_recommendation(self, *a, **kw):
         return self._api.log_recommendation(*a, **kw) if self.source == "api" else None
+
+    def db_test(self):
+        # 콘텐츠가 더미로 전환됐더라도 이 버튼은 실제 서버·DB 연결을 직접 확인해야 한다.
+        return self._api.db_test()
 
 
 def data_source_mode() -> str:

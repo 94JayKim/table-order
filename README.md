@@ -65,7 +65,7 @@ streamlit run admin/app.py --server.port 8502   # 관리자 (현재 토큰 입�
 - 담당자별 TODO(성호·재현·수용·서준·석원): `docs/todo/TODO_*.md` (끝낸 항목은 `- [x]`로 체크해 PR에 포함)
 - API 경로 기준(v7)과 담당 분배표: `docs/api/`
 - 팀원 공지(문서 위치·작업 순서 요약): `docs/팀_공지.md`
-- 협업 규칙: 조직 리포를 **포크**해서 `feat/한글설명` 같은 브랜치로 작업하고, PR 은 본 리포의 **`dev`** 로만 보냅니다(`main` 은 SEONGHO 가 확인 후 머지). 자세한 내용은 `AGENTS.md` 의 "Git 규칙".
+- 협업 규칙: 조직 리포를 **포크**해서 내 포크의 `main` 에서 개발하고, PR 은 본 리포의 **`dev`** 로만 보냅니다(`main` 은 SEONGHO 가 확인 후 머지). 커밋·PR 메시지 규칙은 `AGENTS.md` 의 "Git 규칙".
 
 ## Streamlit Community Cloud 배포 (user·admin 각각)
 

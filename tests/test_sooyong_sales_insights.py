@@ -59,7 +59,7 @@ def test_api_dashboard_ignores_dummy_orders_and_refreshes(server, monkeypatch):
     assert not screen.exception
     html = "\n".join(element.value for element in screen.get("html"))
     assert '오늘 매출</div><div class="v">22,345' in html
-    for tab in ("오늘 · 매출", "매출 추이", "고객 분석", "메뉴 · 운영"):
+    for tab in ("오늘 · 매출", "매출 추이", "고객 분석", "메뉴"):
         screen.sidebar.radio(key="nav_sub_대시보드").set_value(tab).run()
         assert not screen.exception
 

@@ -4,7 +4,6 @@
 import streamlit as st
 
 from admin.ui.widgets import bars, kpi, kpi_row, page_head, panel, sec_title
-from dashboard_stats import customer_care, menu_alerts
 
 ss = st.session_state
 
@@ -111,24 +110,15 @@ def render_trend_insights(x, popular_menus=None):
                            empty="아직 주문이 없어요.")))
 
 
-def render_operations(repo, s):
-    """고객 관리(휴면·수신 동의)와 메뉴 운영(품절) 알림."""
-    sec_title("고객 관리 · 운영 알림")
-    care = customer_care(repo.members(ss["grade_rule"]))
-    # 고객 등급 화면과 같은 전용 집계 API를 써서 휴면 고객 수의 계산 기준을 맞춘다.
-    dormant_count = repo.customer_grades(ss["grade_rule"])["dormant_count"]
-    alerts = menu_alerts(repo.menus(), s["popular_menus"])
+def render_menu_stock(repo):
+    """고객 정보는 고객 목록에 두고 이 화면에는 현재 메뉴 품절만 표시한다."""
+    sec_title("메뉴 판매 현황")
+    alerts = repo.menu_alerts()
     names = ", ".join(alerts["sold_out"][:4]) + (f" 외 {len(alerts['sold_out']) - 4}개" if len(alerts["sold_out"]) > 4 else "")
-    cards = []
-    if care["total"]:
-        cards += [
-            kpi("전체 회원", care["total"], "명", sub=f"수신거부 {care['opted_out']}명"),
-            kpi("휴면 고객", dormant_count, "명", sub=f"전체의 {dormant_count / care['total']:.0%}"),
-            kpi("문자 수신 가능", care["consent"], "명", sub=f"전체의 {care['consent'] / care['total']:.0%}가 동의"),
-        ]
-    cards += [
-        kpi("품절 메뉴", len(alerts["sold_out"]), "개", sub=names or "모두 판매 중이에요"),
-        kpi("품절된 인기 메뉴", len(alerts["popular_sold_out"]), "개", sub=", ".join(alerts["popular_sold_out"]) or "모두 판매 중이에요"),
+    cards = [
+        kpi("품절 메뉴", len(alerts["sold_out"]), "개", sub=names or "품절 메뉴가 없어요"),
+        kpi("품절된 인기 메뉴", len(alerts["popular_sold_out"]), "개",
+            sub=", ".join(alerts["popular_sold_out"]) or "품절된 인기 메뉴가 없어요"),
     ]
     kpi_row(*cards, min_width=120)
 
@@ -169,21 +159,24 @@ def _render_dashboard(repo, sub):
         render_trend_insights(x)
     elif sub == "고객 분석":
         render_order_customers(x, s)
-    else:  # 메뉴 · 운영
-        # 운영 화면도 같은 격자를 사용하고 AI 카드는 한 묶음으로 배치해 행 사이 간격을 맞춘다.
+    else:  # 메뉴
+        # 메뉴 화면도 같은 격자를 사용하고 AI 카드는 한 묶음으로 배치해 간격을 맞춘다.
         ai_cards = [
             kpi("AI 추천 적중률", f"{ai['hit_rate']:.0%}" if ai["hit_rate"] is not None else "-",
                 sub=ai["definition"]),
             kpi("추천 노출", ai["recommendations"], "회", sub=f"조합이 포함된 주문 {ai['ai_orders']}건"),
         ]
-        if not x["empty"] and x["ai_avg_ticket"] is not None and x["plain_avg_ticket"] is not None:
+        if not x["empty"]:
+            # AI·일반 주문 중 한쪽만 있어도 집계된 객단가는 표시하고 없는 쪽은 '-'로 구분한다.
             ai_cards.extend([
-                kpi("AI 추천 주문 객단가", f"{x['ai_avg_ticket']:,}", "원", sub=f"전체 주문의 {x['ai_share']:.0%}"),
-                kpi("일반 주문 객단가", f"{x['plain_avg_ticket']:,}", "원"),
+                kpi("AI 추천 주문 객단가", f"{x['ai_avg_ticket']:,}" if x["ai_avg_ticket"] is not None else "-",
+                    "원" if x["ai_avg_ticket"] is not None else "", sub=f"최근 30일 주문의 {x['ai_share']:.0%}"),
+                kpi("일반 주문 객단가", f"{x['plain_avg_ticket']:,}" if x["plain_avg_ticket"] is not None else "-",
+                    "원" if x["plain_avg_ticket"] is not None else "", sub="최근 30일 주문 기준"),
             ])
         _render_panel_grid(
             panel("인기 메뉴 TOP 10", "주문 수량 기준",
                   bars({m["name"]: m["qty"] for m in s["popular_menus"]}, "개", ranked=True, empty="아직 주문이 없어요.")),
             '<div class="dashboard-menu-kpis">' + "".join(ai_cards) + '</div>',
         )
-        render_operations(repo, s)
+        render_menu_stock(repo)

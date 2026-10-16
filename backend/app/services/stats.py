@@ -156,3 +156,25 @@ def _sales_trends(all_orders: list[dict], recent: list[dict], latest_orders: lis
         "top_customer_share": sum(customer["amount"] for customer in top_customers) / daily[last]
                               if top_customers and daily[last] else None,
     }
+
+
+def menu_stock_alerts(menus: list[dict], sales: list[dict]) -> list[dict]:
+    """현재 품절 메뉴와 전체 판매 수량 TOP10에 드는 품절 메뉴를 구분한다."""
+    by_id = {menu["id"]: menu for menu in menus}
+    by_name = {}
+    for menu in menus:
+        by_name.setdefault(menu["name"], []).append(menu["id"])
+    quantities = Counter()
+    for sale in sales:
+        menu_id = sale["menu_id"]
+        if menu_id is None:
+            # 예전 주문의 ID가 없으면 이름이 유일할 때만 연결해 동명 메뉴를 잘못 집계하지 않는다.
+            matches = by_name.get(sale["name"], [])
+            menu_id = matches[0] if len(matches) == 1 else None
+        if menu_id in by_id:
+            # ID가 있으면 이름이 바뀌어도 같은 메뉴로 집계한다.
+            quantities[menu_id] += sale["qty"]
+    popular = set(sorted(quantities, key=lambda menu_id: (-quantities[menu_id], by_id[menu_id]["name"], menu_id))[:10])
+    return [{"kind": "soldout", "menu_id": menu["id"], "name": menu["name"], "title": "품절 메뉴",
+             "detail": f"{menu['name']} 메뉴가 현재 품절이에요.", "popular": menu["id"] in popular}
+            for menu in menus if menu["is_soldout"]]

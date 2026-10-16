@@ -86,7 +86,7 @@ def test_basic_stat_cards_use_db_values_across_dashboard_tabs(server, monkeypatc
     assert '오늘 신규 고객</div><div class="v">1' in html
     assert '오늘 재방문 고객</div><div class="v">0' in html
     assert "DB 전용 메뉴" in html
-    screen.sidebar.radio(key="nav_sub_대시보드").set_value("메뉴 · 운영").run()
+    screen.sidebar.radio(key="nav_sub_대시보드").set_value("메뉴").run()
     assert not screen.exception
     html = "\n".join(element.value for element in screen.get("html"))
     assert 'AI 추천 적중률</div><div class="v">25%' in html

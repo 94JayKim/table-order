@@ -54,7 +54,7 @@ st.html(Path(__file__).with_name("admin.css"))
 
 # 사이드바 메뉴. 화면 안에 탭이 있는 페이지(대시보드·고객 등급·주문 이력·마케팅)는 탭을 접고 펼 수 있는 하위 메뉴로 보여 준다.
 SUBPAGES = {
-    "대시보드": ["한눈에 보기", "오늘 · 매출", "매출 추이", "고객 분석", "메뉴 · 운영"],
+    "대시보드": ["한눈에 보기", "오늘 · 매출", "매출 추이", "고객 분석", "메뉴"],
     "고객 등급": ["고객 목록", "등급 분류 기준"],
     "주문 이력": ["전체 주문", "고객별 주문"],
     "마케팅": ["AI 챗봇", "AI 추천", "AI 문자"],
@@ -82,6 +82,9 @@ ss.setdefault("token", "")
 ss.setdefault("menu_editor_v", 0)  # 저장 후 표 편집 상태를 초기화하기 위한 번호
 ss.setdefault("menu_cat", st.query_params.get("cat"))  # URL(?cat=)에서 복원 - 메뉴 관리에서 선택한 카테고리 id
 ss.setdefault("grade_rule", dict(DEFAULT_RULE))
+# 기존 화면을 열어 둔 세션도 새 이름으로 이어서 사용할 수 있게 한다.
+if ss.get("nav_sub_대시보드") == "메뉴 · 운영":
+    ss["nav_sub_대시보드"] = "메뉴"
 if ss["repo"] is not None and type(ss["repo"]) is not repo_mod.AdminRepository:
     ss["owner"], ss["repo"] = False, None  # 코드가 다시 읽히기 전에 만든 옛 저장소 객체는 버리고 다시 입장
 
@@ -107,6 +110,9 @@ with st.sidebar:
     if "nav_top" not in ss:
         url_page = st.query_params["page"] if st.query_params.get("page") in PAGES else DEFAULT_PAGE
         url_tab = st.query_params.get("tab")
+        # 예전 북마크로 접근해도 같은 메뉴 화면을 연다.
+        if url_page == "대시보드" and url_tab == "메뉴 · 운영":
+            url_tab = "메뉴"
         for key in NAV_KEYS:
             ss[key] = None
         if url_page in SUBPAGES:

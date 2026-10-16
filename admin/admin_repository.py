@@ -112,6 +112,10 @@ class ApiBackend:
         """추가 통계 전체를 한 번에 읽어 그래프마다 주문을 다시 조회하지 않는다."""
         return api.get(f"{ENDPOINTS['stats']}/insights", self.token, params=rule)
 
+    def menu_alerts(self):
+        """품절 상태와 인기 메뉴 여부를 실제 DB에서 조회한다."""
+        return api.get("/admin/api/alerts", self.token)
+
     def calls(self):
         return api.get(ENDPOINTS["calls"], self.token)
 
@@ -409,6 +413,16 @@ class AdminRepository:
         from dashboard_stats import summarize
 
         return summarize(self.orders(), self.members(rule), tables=self.store()["tables"])
+
+    def menu_alerts(self) -> dict:
+        """API 모드는 DB 품절 알림을, 더미 모드는 기존 시연용 메뉴를 표시한다."""
+        if self.source == "api":
+            alerts = self.backend.menu_alerts()
+            return {"sold_out": [alert["name"] for alert in alerts],
+                    "popular_sold_out": [alert["name"] for alert in alerts if alert["popular"]]}
+        from dashboard_stats import menu_alerts
+
+        return menu_alerts(self.menus(), self.stats()["popular_menus"])
 
     # ---- 직원 호출 ----
     def calls(self) -> list[dict]:

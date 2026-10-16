@@ -16,6 +16,20 @@ class StatsStore:
             "SELECT o.id, o.table_no, o.member_id, o.total, o.ai_combo, o.created_at AS ts, m.nickname "
             "FROM orders o LEFT JOIN members m ON m.id=o.member_id ORDER BY o.id")
 
+    def menu_stock(self) -> list[dict]:
+        """메뉴 관리의 더미 응답 대신 현재 DB의 이름과 품절 상태를 읽는다."""
+        return self.db.all("SELECT id, name, is_soldout FROM menus ORDER BY sort_order, id")
+
+    def menu_sales(self) -> list[dict]:
+        """일반 메뉴와 조합 구성 메뉴를 실제 판매 수량으로 합칠 자료를 읽는다."""
+        # 조합 2세트에 같은 메뉴가 3개씩 있으면 6개 판매로 센다. 조합 줄 자체는 제외한다.
+        return self.db.all(
+            "SELECT i.menu_id, i.name, i.qty FROM order_items i JOIN orders o ON o.id=i.order_id "
+            "WHERE i.kind <> 'combo' UNION ALL "
+            "SELECT c.menu_id, c.name, c.qty*i.qty AS qty FROM order_item_components c "
+            "JOIN order_items i ON i.id=c.order_item_id JOIN orders o ON o.id=i.order_id "
+            "WHERE i.kind='combo'")
+
     def orders(self) -> list[dict]:
         """주문 저장 담당 파일을 수정하지 않고 통계에 필요한 기록을 묶어 읽는다."""
         orders = self.db.all("SELECT id, member_id, total, ai_combo, created_at AS ts FROM orders ORDER BY id")

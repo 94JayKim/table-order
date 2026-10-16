@@ -22,7 +22,7 @@
 | 1 | 1. 고객 등급 · 수신거부 점검 | `GET /api/admin/customers`, `…/customers/grades`, `…/grades/rules`, `POST …/customers/{id}/opt-out` | 1-1 기존 구현 / 1-2 구현·자동 테스트 완료 |
 | 2 | 2. 대시보드 기본 통계 | `GET /admin/api/stats/sales`, `stats/menus/ranking`, `stats/customers`, `stats/ai-recommendations` | 구현·기능 테스트 완료 (전체 화면 테스트의 기존 룰렛 오류 별도) |
 | 3 | 3. 대시보드 추가 통계 | `stats/sales/hourly·trends·weekday·tickets`, `stats/tables` | 구현·기능 테스트 완료 (전체 화면 테스트의 기존 룰렛 오류 별도) |
-| 4 | 4. 운영 알림 | `GET /api/admin/alerts` | 미구현 |
+| 4 | 4. 메뉴 품절 조회 · 중복 고객 정보 제외 | `GET /admin/api/alerts` | 구현·기능 테스트 완료 (전체 화면 테스트의 기존 룰렛 오류 별도) |
 
 **다른 팀원과 겹치는 지점**
 
@@ -129,7 +129,7 @@ UI(대시보드 · 등급 카드 / 고객 등급 기준 패널) → A/views/dash
 
 ### 2-1. `GET /admin/api/stats/sales`, `…/stats/menus/ranking`, `…/stats/customers`, `…/stats/ai-recommendations`
 
-**현재 상태**: `GET /admin/api/stats`의 기본 통계 전체와 4개 세부 API를 실제 DB로 구현했다. 기존 응답 키와 화면 호출 경로를 유지한다. 매출 추이·테이블 통계는 아래 3번에서 DB로 전환했으며, 4번 운영 알림은 아직 화면 계산 경로다.
+**현재 상태**: `GET /admin/api/stats`의 기본 통계 전체와 4개 세부 API를 실제 DB로 구현했다. 기존 응답 키와 화면 호출 경로를 유지한다. 매출 추이·테이블 통계는 아래 3번에서, 메뉴 품절은 아래 4번에서 DB로 전환했다.
 
 **2026-10-16 초기 작업 기록: 오늘 주문 건수만 구현 (이후 2번 전체로 확장)**
 
@@ -256,27 +256,35 @@ UI(대시보드 · 시간대/요일 막대, 추이, 테이블 TOP5) → A/views/
 
 ---
 
-## 4. 운영 알림 (미구현)
+## 4. 메뉴 품절 조회 · 중복 고객 정보 제외 (구현·기능 테스트 완료)
 
-### 4-1. `GET /api/admin/alerts`
+### 4-1. `GET /admin/api/alerts`
 
-**현재 상태**: 화면(`A/dashboard_stats.py customer_care`, `menu_alerts`)이 휴면 고객·품절 메뉴 알림을 직접 계산한다. DB에는 `alerts` 테이블이 있다(`kind` = dormant / soldout / other, `acknowledged_at`).
+**사용자 요청에 따른 범위 조정 (2026-10-17)**: 고객 목록과 겹치는 전체 회원·휴면 고객·문자 수신 가능 카드를 대시보드에서 제외하고, 하위 메뉴 이름을 `메뉴 · 운영`에서 `메뉴`로 변경한다. 기존 TODO의 휴면 알림은 이번 요청에서 제외하며 고객 정보는 고객 등급 > 고객 목록에 유지한다. 메뉴 화면에는 인기 메뉴, AI 지표와 품절 현황만 표시한다.
 
-**목표**: 휴면 고객 수·품절 메뉴 같은 운영 알림 목록을 돌려준다. 방식은 "조회할 때 계산해서 돌려주기"로 시작한다(테이블 저장은 확인(읽음) 기능이 필요할 때 추가).
-
-**테스트 방법**: 새 테스트 — 휴면 기준을 넘긴 회원이 있으면 `kind=dormant` 알림이 나온다 / 품절 메뉴(`menus.is_soldout`)가 있으면 `kind=soldout` / 둘 다 없으면 빈 목록 / 인증 없으면 401.
-
-**중요 이론**: 알림을 "저장해 두는 방식"과 "조회 때 계산하는 방식"의 차이 — 저장은 읽음 처리·이력에 좋고 계산은 항상 최신이고 단순하다. 품절 메뉴 정보는 서준의 `menus`를 **읽기만** 한다.
+**현재 상태**: API 모드는 DB에서 품절과 인기 여부를 읽는다. 더미 모드는 기존 화면 계산을 유지한다. `GET /admin/api/alerts`는 품절 메뉴마다 `{kind: "soldout", menu_id, name, title, detail, popular}`를 반환하며, 품절이 없으면 빈 목록, 미인증 요청은 401이다. `alerts` 테이블에 기록하거나 스키마를 바꾸지 않는다.
 
 **흐름**
 ```
-UI(대시보드 · 운영 알림 패널) → A/views/dashboard.py render_operations → (새) repo.alerts
- → GET /admin/api/alerts → B/routers/admin/alerts.py(신규)
- → B/stores/members.py all() + 메뉴 품절 조회 → DB(members, menus)
- → B/services/grades.py 로 휴면 판정 → [{kind, title, detail, member_id|menu_id}] → UI 알림 카드
+UI(대시보드 > 메뉴 > 메뉴 판매 현황) → A/views/dashboard.py render_menu_stock → repo.menu_alerts()
+ → GET /admin/api/alerts → B/routers/admin/alerts.py
+ → B/stores/stats.py menu_stock()·menu_sales() → DB(menus, orders, order_items, order_item_components)
+ → B/services/stats.py menu_stock_alerts() → 품절 목록·인기 품절 목록 → UI 카드
 ```
 
 **상세 설명 / TODO**
 
-- [ ] `B/routers/admin/alerts.py`(신규)와 등록(성호의 선작업 PR에서 빈 틀로 등록됨. 아직이면 `B/routers/admin/__init__.py`에 한 줄 추가).
-- [ ] 메뉴 품절 조회는 서준의 `shop.menus()`를 호출한다(서준 구현 전에는 품절 알림 항목을 비워 두고 TODO 주석을 남긴다).
+- [x] 등록된 `B/routers/admin/alerts.py`에 DB 읽기 전용 품절 조회 추가. 중복 고객 집계·휴면 알림은 사용자 요청에 따라 제외.
+- [x] 서준 담당 `shop.menus()`는 아직 미구현이므로 수용 담당 `StatsStore`에서 DB를 직접 조회한다. SQL은 store에만 두고 메뉴 CRUD 담당 파일은 수정하지 않는다.
+- [x] 대시보드의 중복 고객 카드를 제거하고 하위 메뉴를 `메뉴`로 변경. 예전 URL·열린 세션의 `메뉴 · 운영`은 새 이름으로 연결한다.
+- [x] 실제 품절 상태·인기 여부·재입고 반영·빈 DB·인증·더미 모드·고객 목록 유지 테스트 통과.
+
+**2026-10-17 구현·검증 기록**
+
+- 메뉴 ID로 주문을 연결하므로 이름이 바뀌어도 품절 여부와 판매 수량을 정확히 집계한다. ID가 없는 과거 주문은 현재 이름이 유일할 때만 연결하고, 동명 메뉴나 삭제된 ID를 임의의 다른 메뉴에 연결하지 않는다.
+- 인기 품절 메뉴는 현재 메뉴의 전체 판매 수량 TOP10 기준이다. 조합은 구성 메뉴 수량 × 조합 주문 수량으로 계산하며 조합 이름 자체는 메뉴로 세지 않는다. 동률은 이름·ID 순으로 고정한다.
+- DB 조회 결과를 새로고침마다 읽어 재입고가 즉시 표시된다. 고객 카드 제거 후 메뉴 화면은 화면용 고객 목록·등급 집계나 더미 메뉴를 호출하지 않는다. 메뉴 관리의 등록·수정 API 자체는 다른 담당자의 기존 더미 상태로 유지되며, 이번 작업은 대시보드 조회 연동이다.
+- 검토 중 한쪽 주문만 있을 때 AI·일반 객단가가 모두 숨겨지는 오류도 수정했다. 집계된 쪽은 금액, 없는 쪽은 `-`를 표시하고 최근 30일 기준을 명시한다.
+- 신규 서버 테스트 `BT/test_sooyong_menu_stock.py` **6 passed**, 신규 화면 테스트 `T/test_sooyong_dashboard_menu.py` **5 passed**. 기존 통계와 함께 지정 테스트는 서버 **57 passed**, 화면 **13 passed**다. 화면 테스트는 중복 제거·고객 목록 유지·실제 DB 표시·품절 해제·빈 DB·AI 주문만 있는 경우·옛 북마크·더미 모드를 검증한다.
+- 전체 서버 **150 passed, 9 skipped**, 전체 화면·통합 **108 passed, 12 skipped, 7 failed**. 실패는 이전 작업에서 원본 재현을 확인한 룰렛 7개뿐이다. 테스트를 skip·삭제하지 않았고, 요청에 따라 로컬 커밋만 진행하며 PR·push는 하지 않는다.
+- 실제 Supabase에서 읽기 전용 트랜잭션으로 `/admin/api/alerts` 200을 확인했다. DB의 품절 메뉴 ID 목록과 API가 일치하며 품절 1개·인기 품절 0개다. 기존 추가 통계 API도 모두 200이며 실제 DB 기록은 변경하지 않았다.

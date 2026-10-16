@@ -1,15 +1,15 @@
-"""개발 전용 API. 운영 환경에서는 설정으로 경로를 닫는다."""
+"""포크·DB 연결을 확인하는 개발 전용 API."""
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from app.core.settings import get_settings
+from app.core.settings import Settings, get_settings
 
 router = APIRouter(prefix="/api/dev", tags=["개발"])
 
 
 @router.post("/db-test")
-async def db_test(request: Request, settings=Depends(get_settings)):
-    """test 테이블에 쓰고 읽은 값이 같은지 반환한다."""
+async def db_test(request: Request, settings: Settings = Depends(get_settings)):
+    # 실수로 운영에서 노출되지 않도록 설정을 켜지 않은 서버에는 경로 자체가 없는 것처럼 응답한다.
     if not settings.dev_test_button:
         raise HTTPException(status_code=404, detail="Not Found")
-    return {"result": 1 if request.app.state.dev_test.insert_and_check() else 0}
+    return request.app.state.dev_test.write_and_read()

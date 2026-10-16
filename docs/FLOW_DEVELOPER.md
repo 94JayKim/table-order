@@ -5,7 +5,7 @@
 
 비유는 이어집니다: **홀(`user/`) → 서빙 직원(`shared/api.py`) → 카운터(`routers/`) → 두뇌(`services/`) → 창고지기(`stores/`) → 장부(SQLite, 이후 Supabase)**.
 
-> **읽기 전에 (2026-10-16 갱신)**: 지금 서버에 실제로 구현된 것은 QR 로그인·고객 목록·수신거부·문자 발송(2·7-5절)뿐이고, 나머지 엔드포인트는 `backend/app/dummy.py` 의 더미 응답입니다(`AGENTS.md` 의 "더미 상태" 참고). 3~6절과 7절 일부는 **이전 구현(커밋 `a8b3d14`)의 흐름을 구현 기준으로 남긴 것**이라, 팀원이 더미를 실제 DB로 바꿀 때 "이렇게 동작해야 한다"는 명세로 읽으세요. 코드에 남은 이름이 문서와 다르면 아래 결정이 우선합니다.
+> **읽기 전에 (2026-10-16 갱신)**: 지금 서버에 실제로 구현된 것은 QR 로그인·고객 목록·수신거부·문자 발송(2·7-5절)뿐이고, 나머지 엔드포인트는 `backend/app/dummy/` 의 더미 응답입니다(`AGENTS.md` 의 "더미 상태" 참고). 3~6절과 7절 일부는 **이전 구현(커밋 `a8b3d14`)의 흐름을 구현 기준으로 남긴 것**이라, 팀원이 더미를 실제 DB로 바꿀 때 "이렇게 동작해야 한다"는 명세로 읽으세요. 코드에 남은 이름이 문서와 다르면 아래 결정이 우선합니다.
 > - 주문 상태(접수/조리중/서빙완료) 기능·UI 없음. 관리자 직원 호출 화면과 `content` 테이블 저장소는 삭제됨(손님의 직원 호출 버튼과 `POST /api/calls` 는 남아 있음).
 > - 룰렛은 회원당 하루 1회(KST), 당첨은 쿠폰함(`coupons`)에 넣고 주문 시 `used_at` 기록. 로그인 기록 테이블은 새 스키마에서 `table_logins` 입니다(`stores/tablet_logins.py` 의 옛 이름 `tablet_logins` 와 같은 역할).
 > - 방문 횟수는 로그인할 때마다 +1. 새 DB 설계는 `docs/DB_SCHEMA.md`.
@@ -150,7 +150,7 @@ sequenceDiagram
     participant C as ui/cart.py
     participant D as ui/dialogs.py:confirm_dialog
     participant RP as user_repository
-    participant API as routers/user.py:create_order
+    participant API as routers/orders.py:create_order
     participant SH as stores/shop_orders.py
     C->>D: [주문 확인하기] ss.confirm_order = True → rerun
     D->>RP: [주문하기] REPO.create_order(table, 줄 목록, cart_total, access_token)
@@ -287,7 +287,7 @@ routers/admin/*.py        menus / orders / members / stats / sms / content / sys
 
 | 한계 | 어디서 확인 | 영향 |
 |---|---|---|
-| 주문 금액을 서버가 재계산하지 않음 | `routers/user.py:OrderIn`, `create_order` | 조작된 요청이면 임의 금액 저장 가능 |
+| 주문 금액을 서버가 재계산하지 않음 | `routers/orders.py:OrderIn`, `create_order` | 조작된 요청이면 임의 금액 저장 가능 |
 | 룰렛 "회원당 하루 1회"는 서버가 판정해야 함 | `state/login.py:finish_login`, `stores/tablet_logins.py` | 화면 세션만 보면 새로고침·다른 태블릿에서 재참여 가능. 서버(`table_logins` 부분 유니크)가 막아야 함 |
 | QR 로그인 세션이 메모리 | `stores/login_sessions.py` | 서버 재시작·다중 프로세스에서 유실 |
 | 서버 오프라인 시 주문이 조용히 저장 안 됨 (`auto`) | `AutoRepository.create_order` | 운영은 `DATA_SOURCE=api` 권장 |
@@ -297,7 +297,7 @@ routers/admin/*.py        menus / orders / members / stats / sms / content / sys
 
 ## 10. 흐름별 읽는 순서 추천
 
-1. **주문**: `ui/cart.py` → `state/cart.py` → `ui/dialogs.py:confirm_dialog` → `user_repository.py:create_order` → `routers/user.py:create_order` → `stores/shop_orders.py`
+1. **주문**: `ui/cart.py` → `state/cart.py` → `ui/dialogs.py:confirm_dialog` → `user_repository.py:create_order` → `routers/orders.py:create_order` → `stores/shop_orders.py`
 2. **로그인**: `ui/login.py` → `state/login.py` → `user/server.py` → `routers/auth.py` → `stores/login_sessions.py` → `stores/members.py`
 3. **AI 추천**: `views/ai.py` → `recommendations.py:recommend_combos` → `recommendation_data.py`(규칙) → `state/cart.py:add_combo`
 4. **관리자 한 화면**: `admin/views/orders.py` → `admin_repository.py`(AdminRepository → ApiBackend) → `routers/admin/orders.py` → `stores/shop_orders.py`

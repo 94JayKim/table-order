@@ -62,6 +62,9 @@ streamlit run admin/app.py --server.port 8502   # 관리자 (현재 토큰 입�
 - DB 설계(테이블·결정 사항·API 대응, 실행용 SQL은 `docs/db/fbgrowth_schema.sql`): `docs/DB_SCHEMA.md`
 - 코드 둘러보기(폴더 지도·핵심 코드 설명): `docs/CODE_TOUR.md`
 - TODO 구현 중 예상 충돌·오류와 해결 방법: `docs/TODO_CONFLICTS_AND_ERRORS.md`
+- 담당자별 TODO(성호·재현·수용·서준·석원): `docs/todo/TODO_*.md` (끝낸 항목은 `- [x]`로 체크해 PR에 포함)
+- API 경로 기준(v7)과 담당 분배표: `docs/api/`
+- 팀원 공지(문서 위치·작업 순서 요약): `docs/NOTICE_TEAM.md`
 - 협업 규칙: 조직 리포를 **포크**해서 `feat/한글설명` 같은 브랜치로 작업하고, PR 은 본 리포의 **`dev`** 로만 보냅니다(`main` 은 SEONGHO 가 확인 후 머지). 자세한 내용은 `AGENTS.md` 의 "Git 규칙".
 
 ## Streamlit Community Cloud 배포 (user·admin 각각)

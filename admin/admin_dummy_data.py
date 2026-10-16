@@ -101,6 +101,19 @@ class DummyBackend:
                                  "ai_combo": r.random() < 0.45,
                                  "roulette_discount_percent": 0, "recommendation_event_id": None})
         self.orders_.sort(key=lambda o: o["ts"], reverse=True)
+        # 직원 호출 화면을 서버 없이 먼저 확인할 수 있도록 대기/완료 호출을 함께 준비한다.
+        # 실제 API도 같은 필드(id, table_no, items, ts, done)를 반환하면 화면 코드는 바꿀 필요가 없다.
+        call_specs = [
+            (1, 7, ["물", "수저 2개"], 4, False),
+            (2, 12, ["앞접시 3개"], 7, False),
+            (3, 3, ["직원 호출"], 11, False),
+            (4, 21, ["물티슈", "물"], 18, True),
+            (5, 9, ["소주잔 2개"], 26, True),
+        ]
+        call_base = datetime(TODAY.year, TODAY.month, TODAY.day, 21, 30, tzinfo=timezone(timedelta(hours=9)))
+        self.calls_ = [{"id": call_id, "table_no": table_no, "items": items,
+                        "ts": _iso(call_base - timedelta(minutes=minutes_ago)), "done": done}
+                       for call_id, table_no, items, minutes_ago, done in call_specs]
 
     # ---- 로그인 / 매장 -----------------------------------------------------
     def login(self, token: str) -> bool:
@@ -151,6 +164,18 @@ class DummyBackend:
     def orders(self) -> list:
         nick = {m["id"]: m["nickname"] for m in self.members_}
         return [{**o, "nickname": nick.get(o["member_id"])} for o in self.orders_]
+
+    # ---- 직원 호출 ------------------------------------------------------------
+    def calls(self) -> list:
+        """최신 호출부터 반환한다. 대기/완료 구분과 정렬은 화면에서도 한 번 더 보장한다."""
+        return [dict(call) for call in sorted(self.calls_, key=lambda call: call["ts"], reverse=True)]
+
+    def call_done(self, call_id: int) -> dict:
+        call = next((call for call in self.calls_ if call["id"] == call_id), None)
+        if call is None:
+            raise Unsupported("직원 호출을 찾을 수 없습니다.")
+        call["done"] = True
+        return dict(call)
 
     def stats(self, rule: dict) -> dict:
         today = [o for o in self.orders_ if o["ts"][:10] >= TODAY.isoformat()]  # UTC 기준 근사

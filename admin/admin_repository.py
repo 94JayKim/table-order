@@ -36,6 +36,7 @@ ENDPOINTS = {
     "members": "/admin/api/members",          # GET ?repeat&regular&dormant
     "orders": "/admin/api/orders",
     "stats": "/admin/api/stats",
+    "calls": "/admin/api/calls",
     "sms": "/admin/api/marketing/sms",        # /usage /preview /send /logs
     "opt_out": "/admin/api/members/{id}/opt-out",
 }
@@ -97,6 +98,12 @@ class ApiBackend:
 
     def stats(self, rule):
         return api.get(ENDPOINTS["stats"], self.token)
+
+    def calls(self):
+        return api.get(ENDPOINTS["calls"], self.token)
+
+    def call_done(self, call_id):
+        return api.post(f"{ENDPOINTS['calls']}/{call_id}/done", self.token)
 
     def sms_usage(self):
         return api.get(f"{ENDPOINTS['sms']}/usage", self.token)
@@ -335,6 +342,13 @@ class AdminRepository:
 
     def stats(self, rule: dict | None = None) -> dict:
         return self.backend.stats(rule or DEFAULT_RULE)
+
+    # ---- 직원 호출 ----
+    def calls(self) -> list[dict]:
+        return self.backend.calls()
+
+    def call_done(self, call_id: int) -> dict:
+        return self.backend.call_done(call_id)
 
     # ---- 마케팅 (서버 필요) ----
     def __getattr__(self, name):  # sms_usage, sms_preview, sms_send, sms_logs, opt_out 은 백엔드로 위임

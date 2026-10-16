@@ -18,6 +18,7 @@
 
 | 순서 | 할 일 | API | 상태 |
 |---|---|---|---|
+| 0 | 0. 개발 흐름 확인 (테스트 버튼) | `POST /api/dev/db-test` (개발 전용) | 확인 전 |
 | 1 | 1. 매장 정보 | `GET /api/v1/store` | 더미 (가장 쉬움, 연습용) |
 | 2 | 2. 주문 저장 · 테이블 누적 · 주문 이력 | `POST /api/v1/orders`, `GET /api/v1/tables/{id}/orders`, `GET /api/v1/owner/orders` | 더미 / 미구현 |
 | 3 | 3. 룰렛 · 쿠폰함 | `roulette/status·plays`, `tables/{n}/logins/prize`, `coupons`, `tables/{n}/coupons`, `POST /api/orders`(쿠폰 사용) | 부분 / 더미 |
@@ -32,6 +33,26 @@
 | `B/services/weather.py`(신규) | 성호가 가져다 씀 | 재현이 먼저 만들고 성호는 import만 한다. 함수 이름이 바뀌면 알려 준다 |
 | `B/routers/user.py` | 서준(`/menus`), 석원(`/calls`) | 본인 함수만 수정. 새 엔드포인트는 새 라우터 파일에 만든다 |
 | `B/dummy.py` | 서준·수용·석원 | 본인 함수·`DUMMY_ENDPOINTS` 줄만 다룬다 |
+
+---
+
+## 0. 개발 흐름 확인 (테스트 버튼) — 가장 먼저
+
+본격적으로 구현하기 전에, 내 PC에서 **포크 → 브랜치 → DB 쓰기·읽기 → 커밋·푸시 → PR** 흐름이 막힘없이 되는지 한 번 확인한다. AI에게 아래 내용을 그대로 시키면 된다.
+
+- [ ] **0-1. 포크·브랜치**: 본 리포를 포크해 내려받고, `dev` 기준으로 `feat/개발흐름-확인-내이름` 같은 새 브랜치를 만든다.
+- [ ] **0-2. test 테이블 확인**: Supabase `table-order`에는 `test` 테이블(`id`, `value`, `created_at`, RLS 켜짐)을 **이미 만들어 두었다**. 없다면(다른 프로젝트·새 DB) `docs/db/fbgrowth_test_table.sql`을 SQL Editor에서 실행한다.
+- [ ] **0-3. 테스트 버튼 만들기** (내 브랜치에서만. `DEV_TEST_BUTTON=1`일 때만 보이는 **개발 전용** 버튼):
+  - 위치: 관리자 로그인 화면(`A/views/login.py`)의 로그인 버튼 옆. 화면 코드는 `A/admin_repository.py`를 통해서만 서버를 부른다.
+  - 서버: `POST /api/dev/db-test`(`B/routers/dev.py` 신규, SQL은 `B/stores/`의 신규 저장소에). `test` 테이블에 임의 값을 INSERT → 같은 행을 다시 SELECT → 값이 같으면 `{"result": 1}`, 아니면 `{"result": 0}`. 확인용 행은 지운다.
+  - 서버 `.env`에 `DEV_TEST_BUTTON=true`일 때만 이 경로를 열고, 꺼져 있으면 404. 화면 쪽은 환경변수 `DEV_TEST_BUTTON=1`일 때만 버튼을 보인다. `.env.example`에도 적는다.
+  - 화면에는 결과 `1`(정상) 또는 실패 이유를 표시한다.
+- [ ] **0-4. 테스트**: `cd backend && uv run pytest -q`와 `python -m pytest tests -q`가 통과하는지 확인한다.
+- [ ] **0-5. 버튼 확인**: 서버와 관리자 화면을 `DEV_TEST_BUTTON`을 켠 채 실행하고, 버튼을 눌러 `1`이 나오는지 본다.
+- [ ] **0-6. 커밋·푸시·PR**: 한국어 커밋 메시지로 커밋하고 내 포크에 푸시한 뒤, **본 리포 `dev`로 PR**을 보낸다(본문: 변경 내용·테스트 방법·테스트 결과·미해결 문제).
+- [ ] **0-7. 마무리**: 이 PR은 흐름 확인용이므로 **머지하지 않고 PR만 닫는다**(버튼 코드는 `dev`에 들어가지 않는다). 확인이 끝나면 위 항목을 모두 `[x]`로 바꾸고 맨 위 진행 순서 표의 0번 상태를 "완료"로 고친다. 이 체크 변경은 첫 실제 기능 PR에 함께 넣는다.
+
+> 이 단계에서 막히면(포크·푸시·DB 연결·PR 권한 등) 구현을 시작하지 말고 먼저 팀에 알린다. 실제 문제 기록은 `docs/TODO_CONFLICTS_AND_ERRORS.md`에 남긴다.
 
 ---
 

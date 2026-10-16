@@ -5,6 +5,7 @@ from html import escape
 
 import streamlit as st
 
+import user_repository as repository
 from user.state import context as ctx
 from user.state.login import poll_login_once
 from user.state.roulette import spins_left
@@ -32,8 +33,17 @@ def render_splash():
             else:
                 st.html('<div class="qr-text"><div class="a">회원이신가요?</div><div class="b">로그인하고 룰렛 돌리기</div>'
                         '<div class="c">로그인하지 않아도<br>주문은 할 수 있어요.</div></div>')
-            if st.button("➕ 다른 회원 로그인" if member else "📱 로그인", key="login_open"):
-                login_dialog("more")
+            with st.container(horizontal=True, key="login_actions"):
+                if st.button("➕ 다른 회원 로그인" if member else "📱 로그인", key="login_open"):
+                    login_dialog("more")
+                if repository.dev_test_button_enabled() and st.button("🧪 DB 테스트", key="dev_db_test"):
+                    ss["dev_db_test_result"] = repository.dev_db_test()
+            result = ss.get("dev_db_test_result")
+            if result:
+                if result.get("result") == 1:
+                    st.success("DB 테스트 정상: 1")
+                else:
+                    st.error(f"DB 테스트 실패: {result.get('reason', '원인을 확인할 수 없습니다.')}")
         with st.container(key="start_cta"):
             st.button("🍴 회원 주문  ›" if member else "🍴 비회원 주문  ›", type="primary", width="stretch",
                       key="start_btn", on_click=go, args=("menu",))

@@ -4,7 +4,6 @@ from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -12,6 +11,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./app.db"
     cors_origins: list[str] = ["http://localhost:8501", "http://localhost:8502"]
     admin_token: str = "change-me"
+    dev_test_button: bool = False  # 개발용 DB 테스트 API와 화면 버튼을 켤지 여부
 
     store_name: str = "역전할머니맥주"
     store_branch: str = "홍대점"

@@ -34,6 +34,7 @@ ENDPOINTS = {
     "orders": "/api/orders",                  # POST
     "calls": "/api/calls",                    # POST
     "recommendations": "/api/recommendations",  # POST (추천 노출 기록)
+    "dev_db_test": "/api/dev/db-test",
 }
 CONTENT_KEYS = ("categories", "roulette_prizes", "staff_calls", "quiz_questions", "weather", "rules")
 MODES = ("dummy", "api", "auto")
@@ -134,6 +135,10 @@ class ApiRepository:
         r = server.safe_call(api.post, ENDPOINTS["recommendations"], token,
                              json={"table_no": table_no, "params": params, "combo_ids": combo_ids})
         return r["id"] if r else None
+
+    def run_dev_db_test(self):
+        """개발 버튼에서만 호출하는 DB 쓰기·읽기 확인 API."""
+        return api.post(ENDPOINTS["dev_db_test"])
 
 
 class AutoRepository:

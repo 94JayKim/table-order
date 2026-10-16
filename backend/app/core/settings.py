@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     sms_monthly_limit: int = 50
     lms_monthly_limit: int = 10
     sms_dry_run: bool = True  # True면 솔라피를 호출하지 않고 로그만 남긴다
+    dev_test_button: bool = False  # 개발 흐름 확인용 DB 테스트 경로는 기본적으로 닫는다
 
     @property
     def supabase_enabled(self) -> bool:

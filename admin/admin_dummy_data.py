@@ -15,7 +15,7 @@ from user import menu_data  # noqa: E402
 
 TODAY = date(2026, 10, 12)
 GRADES = ["신규", "재방문", "단골", "휴면"]  # admin_repository 도 여기 것을 가져다 쓴다
-AGE_GROUPS = ["20대 미만", "20대", "30대", "40대", "50대 이상"]
+AGE_GROUPS = ["20대", "30대", "40대", "50대 이상"]
 DUMMY_ORDER_COUNT = 1000  # 매출 추이와 회원·비회원 비교가 충분히 보이도록 한 달 주문량을 넉넉히 만든다.
 DUMMY_TODAY_ORDER_COUNT = 80
 
@@ -64,7 +64,8 @@ def _grade(visits: int, last: date, rule: dict) -> str:
 
 def _age_group(year: int) -> str:
     age = TODAY.year - year
-    return "20대 미만" if age < 20 else "20대" if age < 30 else "30대" if age < 40 else "40대" if age < 50 else "50대 이상"
+    # 화면에는 20대 미만 구간을 두지 않으므로 최저 연령 구간은 20대로 합친다.
+    return "20대" if age < 30 else "30대" if age < 40 else "40대" if age < 50 else "50대 이상"
 
 
 class DummyBackend:
@@ -80,7 +81,9 @@ class DummyBackend:
         for i in range(1, 61):
             self.members_.append({
                 "id": i, "nickname": f"손님{i:02d}", "gender": r.choice(["남", "여"]),
-                "birth_year": r.choice([2008, 1998, 1992, 1984, 1975]),
+                # 기존 20대 미만 더미 고객은 성인 연령대 네 구간에 고르게 다시 분산한다.
+                # 주문이 이 회원 id와 연결되므로 회원별 주문·매출도 같은 연령대로 자동 귀속된다.
+                "birth_year": r.choice([2002, 1995, 1986, 1974]),
                 "visit_count": r.choice([1, 1, 1, 2, 2, 3, 4, 5, 6, 8, 12]),
                 "last_visit": TODAY - timedelta(days=r.choice([0, 1, 2, 3, 5, 8, 14, 21, 35, 50, 70, 95, 130])),
                 "marketing_consent": r.random() < 0.7, "opted_out": False})

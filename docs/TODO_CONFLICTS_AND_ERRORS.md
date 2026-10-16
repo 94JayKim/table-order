@@ -42,7 +42,7 @@
 
 | 번호 | 증상 | 원인 | 해결 | 담당 |
 |---|---|---|---|---|
-| P1 | `INSERT` 뒤 id가 `None` | `db.run`은 `SERIAL_TABLES`에 있는 테이블만 `RETURNING id`를 붙임. 아직 없는 것: `roulette_prizes`, `staff_call_items`, `quiz_options`, `chat_messages`, `alerts` | 해당 테이블에 INSERT 후 id가 필요하면 `stores/db.py`의 `SERIAL_TABLES`에 이름 추가(한 줄). 공용 파일이므로 **한 사람이 먼저 PR로 넣는다**(성호 제안). id가 필요 없으면 불필요 | 성·석·수 |
+| P1 | `INSERT` 뒤 id가 `None` | `db.run`은 `SERIAL_TABLES`에 있는 테이블만 `RETURNING id`를 붙임 | **해결됨**: id가 자동 증가인 테이블(`roulette_prizes`, `staff_call_items`, `quiz_options`, `chat_messages`, `alerts` 포함)을 모두 `SERIAL_TABLES`에 넣었고, 새 테이블이 빠지면 `test_serial_tables_cover_every_identity_table_in_schema`가 실패한다 | 전 |
 | P2 | `chat_sessions` INSERT 후 id를 못 받음 | id가 `uuid`(기본값 `gen_random_uuid()`)라 `SERIAL_TABLES` 방식이 안 맞음 | 코드에서 `uuid.uuid4()`로 만들어 INSERT하고 그 값을 반환(SQLite도 동일 동작) | 성 |
 | P3 | `operator does not exist: boolean = integer` 또는 `column "is_soldout" is of type boolean but expression is of type integer` | SQLite 칸은 `INTEGER`, Postgres는 `boolean`. 대상: `is_soldout`, `set_ok`, `ai_combo`, `roulette_eligible` | SQL에 `0/1`을 쓰지 말고 **파라미터로 Python `bool`** 전달. 읽을 때는 `bool(row[...])`로 통일(SQLite는 0/1, Postgres는 True/False) | 준·재·석 |
 | P4 | `tags`/`items` 저장 오류 또는 문자열 `'["a"]'`가 배열로 들어감 | Postgres는 `text[]`, SQLite는 JSON 문자열 | 저장은 `db.to_list(...)`, 읽기는 `db.from_list(...)`. 대상: `menus.tags`, `staff_calls.items`, 후속 `combo_ids` 등 | 준·재·석 |

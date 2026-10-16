@@ -194,7 +194,7 @@ UI(챗봇 탭 · 질문 입력) → A/views/marketing.py marketing_chatbot_tab �
   - uuid는 Supabase 대시보드 Authentication > Users에서 복사해 각자 `backend/.env`에만 넣는다(코드·커밋·화면·로그에 쓰지 않는다. DB 스키마는 바꾸지 않는다).
   - `B/stores/chat.py`의 `create_session`이 `settings.chat_owner_id`를 `owner_id`로 넣는다. 값이 비어 있으면 세션 생성은 "CHAT_OWNER_ID 설정이 필요합니다"라는 오류로 돌려주고 500을 내지 않는다.
   - 로컬 SQLite로 개발할 때는 `auth.users` FK가 없으므로 아무 uuid 문자열이어도 동작한다. Supabase에서는 실제 존재하는 uuid여야 한다.
-  - `chat_sessions.id`는 uuid라 `SERIAL_TABLES`에 없다. `uuid.uuid4()`로 코드에서 만들어 넣고 그 값을 반환한다(`chat_messages`는 `SERIAL_TABLES`에 추가 필요).
+  - `chat_sessions.id`는 uuid라 `SERIAL_TABLES`에 없다. `uuid.uuid4()`로 코드에서 만들어 넣고 그 값을 반환한다(`chat_messages`는 이미 `SERIAL_TABLES`에 들어 있음).
   - 5번(관리자 로그인)을 할 때 `require_admin`이 돌려주는 사용자 id로 교체하고 `CHAT_OWNER_ID`는 제거한다.
 - [ ] `B/routers/admin/chat.py`(신규) 5개 엔드포인트. 없는 세션이면 404.
 - [ ] `B/services/chat.py`(신규): 오늘 매출 등은 `B/services/stats.py`(수용)의 함수를 **호출만** 한다. 수용이 구현하기 전에는 주문 합계를 직접 간단히 계산하지 말고, 해당 요약 항목은 "아직 집계 전"으로 두고 진행한다.

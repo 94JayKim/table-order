@@ -36,6 +36,11 @@
 - 관리자 인증(Supabase Auth `owners`)은 모든 개발이 끝난 뒤 마지막에 한다. 지금은 `ADMIN_TOKEN` 방식을 쓰고, 챗봇 `owner_id` 문제도 그때까지 보류.
 - DB 설계는 `docs/DB_SCHEMA.md`와 `docs/db/fbgrowth_schema.sql`이 기준이며 Supabase `table-order` 프로젝트에 적용되어 있다. 서버 `stores/`는 아직 SQLite 호환 구조이므로 Supabase 스키마로 옮기는 작업이 남아 있다.
 
+## 작업 원칙
+- 수정하는 파일 수를 최대한 줄인다. 요청과 무관한 파일은 건드리지 않는다.
+- 기존 코드를 최대한 유지한다. 꼭 필요한 부분만 고치고, 관련 없는 정리·이름 변경·재배치는 하지 않는다.
+- 새로 추가한 코드와 로직에는 초급 개발자도 이해할 수 있게 한국어 주석을 단다(무엇을, 왜 하는지).
+
 ## 금지 구역
 - `.env`, 비밀 키(`SOLAPI_*`, `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET`, `ADMIN_TOKEN`)를 커밋하거나 화면·로그에 노출하지 않는다.
 - 스키마(`stores/*.py`의 `SCHEMA`, `docs/db/*.sql`)를 바꾸면 `docs/DB_SCHEMA.md`도 함께 고치고 팀에 알린다. 기존 `backend/app.db`에는 반영되지 않으므로 지우고 서버를 다시 켠다.

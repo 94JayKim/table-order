@@ -1,4 +1,4 @@
-# AGENTS.md
+# 에이전트 작업 안내 (AGENTS.md)
 
 ## 프로젝트 개요
 - 테이블 오더 모노레포(역전할머니맥주 홍대점 시연용). FastAPI 서버(`backend/`) + 손님 Streamlit(`user/`) + 관리자 Streamlit(`admin/`) + 공통 API 호출(`shared/`).

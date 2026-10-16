@@ -105,7 +105,8 @@ class ApiBackend:
         return api.get(ENDPOINTS["orders"], self.token)
 
     def stats(self, rule):
-        return api.get(ENDPOINTS["stats"], self.token)
+        # 미리 본 등급 기준을 오늘 신규·재방문 집계에도 적용한다.
+        return api.get(ENDPOINTS["stats"], self.token, params=rule)
 
     def calls(self):
         return api.get(ENDPOINTS["calls"], self.token)

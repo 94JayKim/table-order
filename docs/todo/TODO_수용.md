@@ -20,7 +20,7 @@
 |---|---|---|---|
 | 0 | 0. 개발 흐름 확인 (테스트 버튼) | `POST /api/dev/db-test` (개발 전용) | 확인 전 |
 | 1 | 1. 고객 등급 · 수신거부 점검 | `GET /api/admin/customers`, `…/customers/grades`, `…/grades/rules`, `POST …/customers/{id}/opt-out` | 1-1 기존 구현 / 1-2 구현·자동 테스트 완료 |
-| 2 | 2. 대시보드 기본 통계 | `GET /api/admin/stats/sales`, `stats/menus/ranking`, `stats/customers`, `stats/ai-recommendations` | 더미 |
+| 2 | 2. 대시보드 기본 통계 | `GET /admin/api/stats/sales`, `stats/menus/ranking`, `stats/customers`, `stats/ai-recommendations` | 구현·기능 테스트 완료 (전체 화면 테스트의 기존 룰렛 오류 별도) |
 | 3 | 3. 대시보드 추가 통계 | `stats/sales/hourly·trends·weekday·tickets`, `stats/tables` | 미구현 |
 | 4 | 4. 운영 알림 | `GET /api/admin/alerts` | 미구현 |
 
@@ -125,11 +125,34 @@ UI(대시보드 · 등급 카드 / 고객 등급 기준 패널) → A/views/dash
 
 ---
 
-## 2. 대시보드 기본 통계 (더미)
+## 2. 대시보드 기본 통계 (구현·기능 테스트 완료)
 
-### 2-1. `GET /api/admin/stats/sales`, `…/stats/menus/ranking`, `…/stats/customers`, `…/stats/ai-recommendations`
+### 2-1. `GET /admin/api/stats/sales`, `…/stats/menus/ranking`, `…/stats/customers`, `…/stats/ai-recommendations`
 
-**현재 상태**: 서버는 한 엔드포인트 `GET /admin/api/stats`가 고정값(`dummy.dashboard_stats`)을 돌려주고, 화면이 그 값 + 주문/회원 표로 `A/dashboard_stats.py`(pandas)에서 나머지 통계를 계산한다. 먼저 **기존 `/stats`를 실제 계산으로 바꾼 뒤**, 4개 경로는 같은 계산 결과를 나눠 돌려준다.
+**현재 상태**: `GET /admin/api/stats`의 기본 통계 전체와 4개 세부 API를 실제 DB로 구현했다. 기존 응답 키와 화면 호출 경로를 유지한다. 3번의 매출 추이·테이블 통계와 4번의 알림은 아직 화면 계산/더미 경로다.
+
+**2026-10-16 초기 작업 기록: 오늘 주문 건수만 구현 (이후 2번 전체로 확장)**
+
+- 신규 `B/stores/stats.py`의 `StatsStore.count_orders_on()`으로 조회한다. 주문 저장 파일·DB 스키마는 변경하지 않았다.
+- KST 오늘 0시 이상, 다음 날 0시 미만의 주문을 센다. 같은 회원·테이블의 반복 주문과 비회원 주문도 각각 한 건으로 집계하며 메뉴 수량은 합산하지 않는다.
+- Supabase는 UTC 범위의 `COUNT(*)`로 조회한다. SQLite는 공백·T·시간대 표기가 섞인 시각을 파이썬에서 비교해 날짜 경계 오집계를 방지한다.
+- 주문 내역이 비어 있어도 대시보드의 오늘 주문 0건 카드를 표시한다. 기존 더미 통계 테스트는 `BT/test_sooyong_today_orders.py`로 옮겨 다른 필드의 응답 계약까지 유지하는지 확인했다.
+- 새 기능 테스트: 서버 **15 passed**, 화면 **2 passed**. KST 자정·마이크로초 경계, 빈 DB, 중복 집계 방지, 인증, 새로고침 반영을 확인했다.
+- 실제 Supabase의 읽기 전용 트랜잭션에서 오늘 주문 **2건**을 확인했다. 별도의 날짜 비교와 현재 API 응답도 일치했으며 실제 주문은 추가·변경하지 않았다.
+- 전체 서버 테스트: **92 passed, 10 skipped**. 전체 화면·통합 테스트: **97 passed, 12 skipped, 7 failed**. 실패 7개는 모두 `T/test_admin_events_page.py`의 룰렛 관련 테스트이며, 수정 전 원본 커밋 `69ae21c`의 별도 사본에서도 같은 7개 실패가 재현됐다. 다른 담당 영역은 수정하지 않았다.
+- 당시에는 오늘 주문만 구현했으므로 2번 전체 체크박스를 완료로 표시하지 않았다. 이후 완료 기록은 아래와 같다.
+
+**2026-10-16 2번 전체 구현·검증 기록**
+
+- `StatsStore.orders()`가 주문·주문 줄·조합 구성 메뉴를 세 번의 읽기 쿼리로 묶는다. 추천 노출 수는 `recommendation_events`에서 조회한다. 주문 저장 담당 파일·스키마·실제 DB 기록은 변경하지 않았다.
+- 오늘(KST) 주문 수·평균 결제금액(원 단위 버림), 오늘 주문한 고유 회원의 신규/재방문 수를 계산한다. 비회원은 고객 등급 인원에서 제외하고 휴면은 신규·재방문에 넣지 않는다. 회원 연령·성별 분포는 전체 회원 기준이며 미입력 정보는 제외한다.
+- 인기 메뉴와 AI 지표는 전체 기록 기준이다. 조합 수량 × 구성 메뉴 수량으로 인기 메뉴 TOP10을 계산한다. AI 적중률은 AI 포함 주문 수 / 추천 노출 수이며 노출 0회면 `null`이다. 정의를 화면에 표시한다.
+- 세부 응답: `sales`는 `{today_orders, avg_order_amount}`, `menus/ranking`은 `{popular_menus}`, `customers`는 `{new_customers, returning_customers, age_groups, genders}`, `ai-recommendations`는 `{recommendations, ai_orders, hit_rate, definition}`이다. 같은 계산 함수를 사용한다.
+- 등급 미리보기 쿼리를 화면에서 통계 API로 전달하며 저장하지 않는다. 잘못된 기준은 422, 미인증 요청은 401이다.
+- 서버 더미 함수·엔드포인트 목록을 제거했다. 기존 통계 테스트의 skip을 해제하고, 아직 더미인 주문·추천 쓰기 대신 메모리 DB 픽스처를 준비해 실제 통계 API를 검증한다.
+- 서버 기능 테스트 **26 passed**. 화면 기능 테스트 3개를 포함한 지정 테스트 **11 passed, 4 skipped**. 전체 서버 **103 passed, 9 skipped**. 테스트를 새로 skip하거나 삭제하지 않았다.
+- 최종 전체 화면·통합 테스트 **98 passed, 12 skipped, 7 failed**. 실패는 수정 전 원본에서도 재현된 `T/test_admin_events_page.py`의 기존 룰렛 7개뿐이다. 최초 실행의 임시 폴더 권한 오류는 권한을 확보해 재실행한 결과 해소됐다. 2번 구현은 커밋하되 전체 테스트 통과 전에는 PR을 보내지 않는다.
+- 실제 Supabase 읽기 전용 검증에서 전체·세부 API 모두 200: 오늘 주문 2건, 평균 68,200원, 신규 0명·재방문 2명, 인기 메뉴 10개, 추천 65회·AI 주문 40건·적중률 약 61.5%를 확인했다.
 
 **목표**: 오늘 주문 수·평균 주문금액·오늘 신규/재방문 고객, 연령대·성별 분포, 인기 메뉴 TOP10, AI 추천 노출 수와 적중률을 DB에서 계산한다.
 
@@ -165,12 +188,12 @@ UI(대시보드 KPI 카드) → A/views/dashboard.py → repo.stats(rule) (A/adm
 
 **상세 설명 / TODO**
 
-- [ ] 더미 주석처리: `B/routers/admin/stats.py`의 `dummy.dashboard_stats()` 줄, `B/dummy/stats_data.py`의 `dashboard_stats`와 `"GET /admin/api/stats"` 줄.
-- [ ] `B/services/stats.py dashboard()`를 파일 안 TODO 순서대로 구현(반환 키는 `dummy.dashboard_stats()`와 같게: `today_orders, avg_order_amount, new_customers, returning_customers, age_groups, genders, popular_menus, ai`).
-- [ ] `B/stores/stats.py`(신규): 기간 내 주문 목록(줄·구성 메뉴 포함), 추천 노출 수 조회. `shop_orders.py`는 수정하지 않는다. 재현의 `recommendation_count()`가 준비되면 그것을 써도 된다.
-- [ ] 라우터 TODO대로 `today = datetime.now(KST).date()`, `rule = grade_rule(settings)`로 호출.
-- [ ] 4개의 세분화 경로(`stats/sales`, `stats/menus/ranking`, `stats/customers`, `stats/ai-recommendations`)는 `dashboard()` 결과의 해당 부분만 잘라 돌려주는 얇은 라우트로 추가한다(계산 중복 금지). 화면은 기존 `/stats`를 계속 써도 된다.
-- [ ] `BT/test_dummy_get.py::test_admin_get_dummies`의 stats 줄을 새 테스트로 대체.
+- [x] 서버 통계 더미 호출·함수·엔드포인트 목록 제거.
+- [x] `B/services/stats.py dashboard()` 구현. 기존 반환 키(`today_orders, avg_order_amount, new_customers, returning_customers, age_groups, genders, popular_menus, ai`) 유지.
+- [x] `B/stores/stats.py`: 주문 목록(줄·구성 메뉴 포함), 추천 노출 수 조회. `shop_orders.py` 수정 없음.
+- [x] 라우터에서 `today = datetime.now(KST).date()`, `rule = grade_rule(settings)`로 호출. 미리보기 쿼리 지원.
+- [x] 4개의 세분화 경로는 같은 `dashboard()` 결과의 해당 부분만 반환. 화면은 기존 `/stats` 사용.
+- [x] `BT/test_dummy_get.py::test_admin_get_dummies`의 stats 줄을 수용 통계 테스트로 대체.
 
 ---
 

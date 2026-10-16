@@ -18,6 +18,10 @@ def render_sales_insights(s, x):
     """주문·매출 지표와 매출 그래프만 한 영역에 모아 보여 준다."""
     sec_title("매출", "오늘 · 최근 7일 · 최근 30일을 한 번에 비교해요")
     if x["empty"]:
+        # 주문 목록이 비어 있어도 서버가 집계한 오늘 주문·평균 금액은 표시한다.
+        kpi_row(kpi("오늘 주문", s["today_orders"], "건", accent=True),
+                kpi("평균 주문금액", f"{s['avg_order_amount']:,}" if s["today_orders"] else "-",
+                    "원" if s["today_orders"] else ""))
         st.html('<div class="empty">아직 주문이 없어요.</div>')
         return
     kpi_row(
@@ -45,14 +49,15 @@ def render_sales_insights(s, x):
 def render_order_customers(x, s):
     """고객 분석: 주문 고객 등급·테이블별 주문, 연령대·성별."""
     sec_title("고객", "오늘 방문 고객과 회원·비회원 매출을 함께 확인해요")
+    # 주문 목록 더미의 유무와 관계없이 서버의 오늘 고객 집계를 표시한다.
+    kpi_row(kpi("오늘 신규 고객", s["new_customers"], "명", accent=True),
+            kpi("오늘 재방문 고객", s["returning_customers"], "명"))
     if not x["empty"]:
         member_sub = f"회원 {x['member_revenue']:,}원 · 비회원 {x['guest_revenue']:,}원"
         top_kinds = {kind: sum(1 for customer in x["top_customers"] if customer["kind"] == kind)
                      for kind in ("회원", "비회원")}
         top_tables = ", ".join(f"{table}번" for table in dict.fromkeys(customer["table"] for customer in x["top_customers"]))
         kpi_row(
-            kpi("오늘 신규 고객", s["new_customers"], "명", accent=True),
-            kpi("오늘 재방문 고객", s["returning_customers"], "명"),
             kpi("재방문 고객 비율", f"{x['returning_share']:.0%}" if x["returning_share"] is not None else "-",
                 sub="최근 주문 고객 중 재방문·단골"),
             kpi("오늘 회원 매출 비중", f"{x['member_revenue_share']:.0%}" if x["member_revenue_share"] is not None else "-",
@@ -165,7 +170,7 @@ def _render_dashboard(repo, sub):
         # 운영 화면도 같은 격자를 사용하고 AI 카드는 한 묶음으로 배치해 행 사이 간격을 맞춘다.
         ai_cards = [
             kpi("AI 추천 적중률", f"{ai['hit_rate']:.0%}" if ai["hit_rate"] is not None else "-",
-                sub="임시 기준 · 계산 기준은 추가 정의가 필요해요"),
+                sub=ai["definition"]),
             kpi("추천 노출", ai["recommendations"], "회", sub=f"조합이 포함된 주문 {ai['ai_orders']}건"),
         ]
         if not x["empty"] and x["ai_avg_ticket"] is not None and x["plain_avg_ticket"] is not None:

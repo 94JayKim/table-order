@@ -45,12 +45,12 @@
 - [ ] **0-1. 포크·브랜치**: 본 리포를 포크해 내려받고, `dev` 기준으로 `feat/개발흐름-확인-내이름` 같은 새 브랜치를 만든다.
 - [ ] **0-2. test 테이블 확인**: Supabase `table-order`에는 `test` 테이블(`id`, `value`, `created_at`, RLS 켜짐)을 **이미 만들어 두었다**. 없다면(다른 프로젝트·새 DB) `docs/db/fbgrowth_test_table.sql`을 SQL Editor에서 실행한다.
 - [ ] **0-3. 테스트 버튼 만들기** (내 브랜치에서만. `DEV_TEST_BUTTON=1`일 때만 보이는 **개발 전용** 버튼):
-  - 위치: 관리자 로그인 화면(`A/views/login.py`)의 로그인 버튼 옆. 화면 코드는 `A/admin_repository.py`를 통해서만 서버를 부른다.
+  - 위치: **손님 시작 화면(룰렛이 있는 화면)**(`U/views/splash.py`)의 "📱 로그인" 버튼(`key="login_open"`) 옆. 화면 코드는 `api`를 직접 부르지 말고 `U/user_repository.py`를 통해서만 서버를 부른다.
   - 서버: `POST /api/dev/db-test`(`B/routers/dev.py` 신규, SQL은 `B/stores/`의 신규 저장소에). `test` 테이블에 임의 값을 INSERT → 같은 행을 다시 SELECT → 값이 같으면 `{"result": 1}`, 아니면 `{"result": 0}`. 확인용 행은 지운다.
   - 서버 `.env`에 `DEV_TEST_BUTTON=true`일 때만 이 경로를 열고, 꺼져 있으면 404. 화면 쪽은 환경변수 `DEV_TEST_BUTTON=1`일 때만 버튼을 보인다. `.env.example`에도 적는다.
   - 화면에는 결과 `1`(정상) 또는 실패 이유를 표시한다.
 - [ ] **0-4. 테스트**: `cd backend && uv run pytest -q`와 `python -m pytest tests -q`가 통과하는지 확인한다.
-- [ ] **0-5. 버튼 확인**: 서버와 관리자 화면을 `DEV_TEST_BUTTON`을 켠 채 실행하고, 버튼을 눌러 `1`이 나오는지 본다.
+- [ ] **0-5. 버튼 확인**: 서버와 손님 화면(`streamlit run user/app.py`)을 `DEV_TEST_BUTTON`을 켠 채 실행하고, 버튼을 눌러 `1`이 나오는지 본다.
 - [ ] **0-6. 커밋·푸시·PR**: 한국어 커밋 메시지로 커밋하고 내 포크에 푸시한 뒤, **본 리포 `dev`로 PR**을 보낸다(본문: 변경 내용·테스트 방법·테스트 결과·미해결 문제).
 - [ ] **0-7. 마무리**: 이 PR은 흐름 확인용이므로 **머지하지 않고 PR만 닫는다**(버튼 코드는 `dev`에 들어가지 않는다). 확인이 끝나면 위 항목을 모두 `[x]`로 바꾸고 맨 위 진행 순서 표의 0번 상태를 "완료"로 고친다. 이 체크 변경은 첫 실제 기능 PR에 함께 넣는다.
 

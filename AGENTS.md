@@ -13,12 +13,13 @@ cp .env.example .env
 uv sync
 uv run fastapi dev main.py
 
+# 페이지 (backend/.env 의 APP_ENV=dev 면 손님은 모의 회원으로 자동 로그인, 관리자는 토큰 생략. dev 가 아니면 우회 없음)
 # 페이지 (저장소 루트에서, 서버가 켜져 있어야 QR 로그인·문자 발송이 동작)
 uv venv .venv
 source .venv/Scripts/activate   # macOS/Linux 는 source .venv/bin/activate
 uv pip install -r requirements.txt
 streamlit run user/app.py --server.port 8501    # 사용자 (?table=12 로 테이블 지정)
-streamlit run admin/app.py --server.port 8502   # 관리자 (현재 토큰 입력 생략. 끄려면 ADMIN_SKIP_TOKEN=0, 토큰은 ADMIN_TOKEN)
+streamlit run admin/app.py --server.port 8502   # 관리자 (APP_ENV=dev 면 토큰 입력 생략. 끄려면 ADMIN_SKIP_TOKEN=0, 토큰은 ADMIN_TOKEN)
 ```
 - 서버 테스트: `cd backend && uv run pytest -q`
 - 화면+통합 테스트: 저장소 루트에서 `python -m pytest tests -q` (streamlit·pytest·backend 의존성이 모두 설치된 환경 필요)

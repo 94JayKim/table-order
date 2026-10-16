@@ -9,6 +9,8 @@
 
 **적용 상태(2026-10-16 확인): Supabase `table-order` 프로젝트에 적용돼 있습니다.** 테이블 27개, RLS 전부 켜짐(`coupons`와 룰렛 하루 1회 인덱스는 2026-10-16 마이그레이션 `add_coupons_and_roulette_one_play_per_day`로 추가). 다만 FastAPI 서버(`backend/app/stores/`)는 아직 이 스키마가 아니라 SQLite 호환 저장소를 쓰므로(쿠폰함도 `stores/coupons.py`의 SQLite 테이블로 먼저 구현), 서버를 Supabase 스키마로 옮기는 작업이 남아 있습니다.
 
+개발 흐름 확인용 `test` 테이블(서비스 테이블 아님, 위 27개에 포함하지 않음)은 `docs/db/fbgrowth_test_table.sql`이고 2026-10-16에 적용했습니다. 각자의 TODO 0번 단계에서 쓰기·읽기 확인에 씁니다.
+
 ## 목차
 
 1. [결정 사항](#결정-사항)

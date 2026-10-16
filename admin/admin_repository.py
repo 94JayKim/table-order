@@ -17,7 +17,7 @@ import os
 import re
 import sys
 import uuid
-from html import escape, unescape
+from html import escape
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -141,9 +141,25 @@ COLOR_PRESETS = {"주황": ["#f6b93b", "#e55039"], "초록": ["#b8e994", "#38ada
 
 
 ROULETTE_MIN_SLOTS, ROULETTE_MAX_SLOTS = 2, 8
-ROULETTE_COLUMNS = ["칸 문구", "이모지", "종류", "할인율(%)", "서비스 메뉴", "색상", "확률 가중치", "당첨 안내문"]
+ROULETTE_COLUMNS = ["서비스 메뉴", "종류", "할인율(%)", "확률 가중치", "색상"]
 ROULETTE_KINDS = {"discount": "할인", "free": "서비스"}
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
+SERVICE_MENU_IDS = ("a1", "a4", "a11", "d7", "d8", "d1", "j1", "b1")
+SERVICE_MENU_NAMES = {"a1": "맛보기 먹태구이", "d1": "탄산음료", "j1": "소주 1병", "b1": "생맥주 1잔"}
+ALL_MENU_LABEL = "[할인] 전체 메뉴"
+
+
+def _service_menu_allowed(menu: dict) -> bool:
+    """사장님이 정한 맛보기·간식·음료 메뉴만 룰렛 서비스로 허용한다."""
+    return menu["id"] in SERVICE_MENU_IDS
+
+
+def _menu_emoji(name: str, original: str = "") -> str:
+    """메뉴 이름을 보고 서비스 카드에 어울리는 이모지를 자동 배정한다."""
+    emoji_rules = (("계란", "🥚"), ("감자", "🍟"), ("치즈볼", "🧀"), ("닭똥집", "🍗"), ("오징어", "🦑"),
+                   ("새우", "🍤"), ("먹태", "🐟"), ("떡볶이", "🌶️"), ("노가리", "🐟"), ("건어물", "🦑"), ("콜라", "🥤"),
+                   ("사이다", "🥤"), ("라면", "🍜"), ("주먹밥", "🍙"), ("공깃밥", "🍚"), ("땅콩", "🥜"))
+    return next((emoji for word, emoji in emoji_rules if word in name), original if original and original != "🍽️" else "🍴")
 
 
 class CategoryError(Exception):
@@ -266,16 +282,32 @@ class AdminRepository:
         return {"saved": saved, "deleted": len(deleted)}
 
     # ---- 이벤트: 룰렛 ----
+    def roulette_menu_choices(self) -> list[dict]:
+        """서비스 가능한 메뉴만 카테고리 순으로 묶어 선택 목록을 만든다."""
+        payload = self.backend.menus()
+        category_names = {category["id"]: category["name"] for category in payload["categories"]}
+        category_order = {category["id"]: order for order, category in enumerate(payload["categories"])}
+        choices = []
+        menus = sorted(payload["menus"], key=lambda menu: (category_order.get(menu["cat"], 999), menu["name"]))
+        for menu in menus:
+            if _service_menu_allowed(menu):
+                category = category_names.get(menu["cat"], menu["cat"])
+                display_name = SERVICE_MENU_NAMES.get(menu["id"], menu["name"])
+                choices.append({"id": menu["id"], "name": display_name, "category": category,
+                                "label": f"[{category}] {display_name}",
+                                "emoji": _menu_emoji(display_name, menu.get("emoji", ""))})
+        return [{"id": None, "name": "전체 메뉴", "category": "할인", "label": ALL_MENU_LABEL, "emoji": "🎟️"}, *choices]
+
     def roulette_table(self) -> pd.DataFrame:
         """룰렛 칸 목록 → 편집용 표. 서버의 칸 모양은 user/menu_data.py 의 ROULETTE_PRIZES 와 같다."""
-        names = {m["id"]: m["name"] for m in self.backend.menus()["menus"]}
+        choices = {choice["id"]: choice for choice in self.roulette_menu_choices() if choice["id"]}
         rows = []
         for p in self.backend.roulette_prizes():
             free = p["kind"] == "free"
-            rows.append({"칸 문구": unescape(re.sub(r"<[^>]+>", "", p["label"].split("<br>")[0])), "이모지": p.get("emoji", ""),
-                         "종류": ROULETTE_KINDS[p["kind"]], "할인율(%)": 0 if free else int(p.get("percent", 0)),
-                         "서비스 메뉴": names.get(p.get("item_id"), p.get("item_id")) if free else None,
-                         "색상": p.get("color", "#888888"), "확률 가중치": p.get("weight", 1), "당첨 안내문": p.get("short", "")})
+            choice = choices.get(p.get("item_id"))
+            rows.append({"서비스 메뉴": choice["label"] if free and choice else ALL_MENU_LABEL,
+                         "종류": ROULETTE_KINDS[p["kind"]], "할인율(%)": 5 if free else int(p.get("percent", 5)),
+                         "확률 가중치": float(p.get("weight", 1)), "색상": p.get("color", "#888888")})
         return pd.DataFrame(rows, columns=ROULETTE_COLUMNS)
 
     @staticmethod
@@ -287,12 +319,10 @@ class AdminRepository:
 
     def save_roulette(self, table: pd.DataFrame) -> None:
         """편집한 표를 검사해 서버 칸 모양으로 바꿔 통째로 저장한다."""
-        ids = {m["name"]: m["id"] for m in self.backend.menus()["menus"]}
+        choices = {choice["label"]: choice for choice in self.roulette_menu_choices() if choice["id"]}
         prizes = []
         for n, row in enumerate(table.to_dict("records"), 1):
-            line1, kind = _text(row["칸 문구"]).strip(), {v: k for k, v in ROULETTE_KINDS.items()}.get(row["종류"])
-            if not line1:
-                raise CategoryError(f"{n}번째 칸의 문구를 입력해 주세요.")
+            kind = {v: k for k, v in ROULETTE_KINDS.items()}.get(row["종류"])
             if kind is None:
                 raise CategoryError(f"{n}번째 칸의 종류(할인/서비스)를 골라 주세요.")
             color = _text(row["색상"]).strip()
@@ -301,25 +331,29 @@ class AdminRepository:
             weight = row["확률 가중치"]
             if pd.isna(weight) or weight < 0:
                 raise CategoryError(f"{n}번째 칸의 확률 가중치는 0 이상이어야 해요.")
-            prize = {"emoji": _text(row["이모지"]).strip() or "🎁", "color": color, "kind": kind, "weight": float(weight)}
+            prize = {"color": color, "kind": kind, "weight": float(weight)}
             if kind == "discount":
+                if row["서비스 메뉴"] != ALL_MENU_LABEL:
+                    raise CategoryError(f"{n}번째 할인 칸은 전체 메뉴를 골라 주세요.")
                 percent = row["할인율(%)"]
-                if pd.isna(percent) or not 1 <= percent <= 100:
-                    raise CategoryError(f"{n}번째 칸의 할인율은 1~100% 여야 해요.")
-                prize.update(percent=int(percent), label=f"{escape(line1)}<br><b>{int(percent)}% 할인</b>")
-                default_short = f"{line1} {int(percent)}% 할인"
+                if pd.isna(percent) or int(percent) not in (5, 10, 15, 20):
+                    raise CategoryError(f"{n}번째 칸의 할인율은 5·10·15·20% 중에서 골라 주세요.")
+                prize.update(percent=int(percent), emoji="🎟️", label=f"모든 메뉴<br><b>{int(percent)}% 할인</b>")
+                default_short = f"전 메뉴 {int(percent)}% 할인"
             else:
                 menu = _text(row["서비스 메뉴"])
-                if menu not in ids:
+                if menu not in choices:
                     raise CategoryError(f"{n}번째 칸의 서비스 메뉴를 골라 주세요.")
-                prize.update(item_id=ids[menu], label=f"{escape(line1)}<br><b>서비스</b>")
-                default_short = f"{menu} 서비스"
-            prize["short"] = _text(row["당첨 안내문"]).strip() or default_short
+                choice = choices[menu]
+                prize.update(item_id=choice["id"], emoji=choice["emoji"], label=f"{escape(choice['name'])}<br><b>서비스</b>")
+                default_short = f"{choice['name']} 서비스"
+            prize["short"] = default_short
             prizes.append(prize)
         if not ROULETTE_MIN_SLOTS <= len(prizes) <= ROULETTE_MAX_SLOTS:
             raise CategoryError(f"룰렛 칸은 {ROULETTE_MIN_SLOTS}~{ROULETTE_MAX_SLOTS}개여야 해요.")
-        if not any(p["weight"] > 0 for p in prizes):
-            raise CategoryError("확률 가중치가 0보다 큰 칸이 하나는 있어야 해요.")
+        weights = [p["weight"] for p in prizes]
+        if any(weight % 10 for weight in weights) or sum(weights) != 100:
+            raise CategoryError("확률은 10% 단위로 고르고 전체 합계를 100%로 맞춰 주세요.")
         self.backend.save_roulette_prizes(prizes)
 
     # ---- 고객 / 주문 / 통계 ----

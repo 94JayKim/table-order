@@ -16,7 +16,7 @@
 | G3 | `factory.py`, `routers/admin/__init__.py` 충돌 | 새 라우터 등록 줄을 여러 명이 같은 위치에 추가 | 새 라우터 파일이 필요하면 **한 사람씩 순서대로** 머지한다. 분배 문서의 "선작업 PR"(빈 라우터 등록)이 머지되기 전에는 이 두 파일을 서로 알리고 수정 | 전 |
 | G4 | `PUT /admin/api/content/{name}`과 `seed/content.json`을 세 명이 고침 | `content`는 카테고리(준)·룰렛/직원호출 항목(석)·AI 질문/규칙(재)이 한 키 묶음 | 각자 **본인 키만** 지운다. 마지막에 남은 키가 없는지 한 사람이 정리한다 | 재·준·석 |
 | G5 | `user/user_repository.py`, `admin/admin_repository.py`의 `ENDPOINTS`/호출 목록 충돌 | 화면 호출 모음이 한 파일 | 내 호출 줄만 추가·수정. 응답 모양은 더미와 같게 유지(계약 테스트가 확인) | 전 |
-| G6 | `docs/DB_SCHEMA.md`, `docs/db/*.sql`, `AGENTS.md` 충돌 | 스키마·규칙 변경이 겹침 | 스키마를 바꾸는 사람은 한 명씩. 바꾸면 문서도 같은 PR에 넣고 팀에 알린다(AGENTS.md 금지 구역 규칙) | 전 |
+| G6 | `docs/DB_설계.md`, `docs/db/*.sql`, `AGENTS.md` 충돌 | 스키마·규칙 변경이 겹침 | 스키마를 바꾸는 사람은 한 명씩. 바꾸면 문서도 같은 PR에 넣고 팀에 알린다(AGENTS.md 금지 구역 규칙) | 전 |
 | G7 | 같은 이름의 새 테스트 파일 | TODO 예시가 `test_roulette.py` 등 같은 이름 | 테스트 파일명은 본인 기능 이름으로. 예: 수용 `test_stats_db.py`, 서준 `test_menus_db.py` | 전 |
 | G8 | PR을 `main`으로 보냄 | 포크 흐름 혼동 | PR은 본 리포 **`dev`로만**. 브랜치명은 `feat/한글설명` 형식. `main` 반영은 SEONGHO | 전 |
 | G9 | 의존 순서가 어긋남 | 석원 룰렛 서비스 칸은 서준 메뉴, 수용 통계는 재현 주문, 성호 후보·챗봇은 수용·재현 데이터에 의존 | 순서: 서준 → 재현 → 수용·석원 → 성호. 아직 안 끝난 쪽 데이터는 "집계 전"/건너뛰기로 두고 TODO에 적힌 규칙을 따른다 | 전 |
@@ -54,9 +54,9 @@
 | P10 | `psycopg.errors.ForeignKeyViolation` | Supabase에는 FK가 있고 SQLite에는 없음. 메뉴를 쓰는 룰렛 서비스 칸(`roulette_prizes.menu_id`, RESTRICT), 메뉴가 남은 카테고리(`menus.category_id`, RESTRICT), 없는 `menu_id`로 쿠폰·주문 줄 INSERT | 삭제 전에 사용 여부를 조회해 **409와 안내 문구**로 거절하거나 예외를 잡아 변환. 시드는 순서 지키기: categories → menus → roulette_prizes | 준·석·재 |
 | P11 | `ai`/`best` 카테고리에 메뉴 저장 시 DB 예외 | `menus_virtual_check` 트리거가 가상 카테고리를 막음(SQLite에는 없음) | 라우터에서 **먼저 422**로 거절(DB 예외에 의존하지 않기) | 준 |
 | P12 | `check constraint` 위반 | Postgres에만 있는 체크: `weight 0~100`, `spicy 0~3`, `qty 1~99`, 룰렛 칸 `kind`별(할인=percent 필수·menu_id 없음 / 서비스=menu_id 필수) , 쿠폰 `kind`별 | 서버 검증(Pydantic `Field`)을 DB 체크와 **같은 범위**로 맞춘다 | 준·석·재 |
-| P13 | `DATABASE_URL`이 Postgres일 때만 로그인·문자 실패 | 현재 서버·테스트는 Supabase에서 한 번도 실행된 적이 없음(DB_SCHEMA.md 검증 이력 참고) | 개발 중 SQLite로 하더라도, **PR 전 한 번은 Supabase 연결로** 해당 기능을 수동 확인. 연결 문자열은 팀 비공개 채널로 공유하고 `backend/.env`에만 넣음(커밋 금지) | 성(스모크 테스트), 전 |
+| P13 | `DATABASE_URL`이 Postgres일 때만 로그인·문자 실패 | 현재 서버·테스트는 Supabase에서 한 번도 실행된 적이 없음(DB_설계.md 검증 이력 참고) | 개발 중 SQLite로 하더라도, **PR 전 한 번은 Supabase 연결로** 해당 기능을 수동 확인. 연결 문자열은 팀 비공개 채널로 공유하고 `backend/.env`에만 넣음(커밋 금지) | 성(스모크 테스트), 전 |
 | P14 | 서버 시작 때 `prepared statement` 오류 (추정) | Supabase 풀러 모드에 따라 다름. 코드는 `prepare_threshold=None`으로 대비함 | "Session pooler" 주소를 쓴다(`.env.example` 주석 참고) | 전 |
-| P15 | Supabase에 이미 있는 테이블과 SQLite `SCHEMA`의 칸이 다름 | `CREATE TABLE IF NOT EXISTS`는 이미 있는 테이블을 **고치지 않음**. SQLite 코드 칸이 Supabase에 없으면 `column does not exist` | 새 칸이 필요하면 SQL Editor에서 `alter table` 직접 실행 + `docs/DB_SCHEMA.md`·`docs/db/*.sql` 수정 + 팀 공지. 로컬은 `backend/app.db`를 지우고 서버 재시작 | 전 |
+| P15 | Supabase에 이미 있는 테이블과 SQLite `SCHEMA`의 칸이 다름 | `CREATE TABLE IF NOT EXISTS`는 이미 있는 테이블을 **고치지 않음**. SQLite 코드 칸이 Supabase에 없으면 `column does not exist` | 새 칸이 필요하면 SQL Editor에서 `alter table` 직접 실행 + `docs/DB_설계.md`·`docs/db/*.sql` 수정 + 팀 공지. 로컬은 `backend/app.db`를 지우고 서버 재시작 | 전 |
 | P16 | SQLite에만 있는 테이블 | 새 기능 테이블(`categories`, `roulette_prizes`, `staff_call_items`, `quiz_*`, `alerts`, `chat_*`)은 SQLite용 `SCHEMA`가 아직 없음 | 로컬 테스트용으로 store에 `SCHEMA`(SQLite 문법)를 추가하되 **컬럼명을 Supabase 스키마와 동일하게** 한다 | 준·석·재·수·성 |
 
 ---
@@ -96,5 +96,5 @@
 
 1. `grep -rn "dummy\." backend/app/routers`로 아직 더미인 라우트 확인
 2. 오류 메시지의 `psycopg.errors.…` 이름으로 위 표(P·E)에서 찾기
-3. `docs/DB_SCHEMA.md`와 `docs/db/fbgrowth_schema.sql`에서 제약·타입 확인
+3. `docs/DB_설계.md`와 `docs/db/fbgrowth_schema.sql`에서 제약·타입 확인
 4. 그래도 안 풀리면 PR 대신 팀 채널에 오류 전문과 실행한 SQL을 공유(비밀 키·DB 비밀번호 제외)

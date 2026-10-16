@@ -263,6 +263,7 @@ def test_page_and_category_are_kept_in_url_and_restored_on_reload(monkeypatch):
 def test_skip_token_enters_without_login(monkeypatch):
     monkeypatch.setenv("DATA_SOURCE", "dummy")
     monkeypatch.setenv("ADMIN_TOKEN", "change-me")
+    monkeypatch.setenv("APP_ENV", "dev")  # 자동 입장은 APP_ENV=dev 일 때만
     monkeypatch.setenv("ADMIN_SKIP_TOKEN", "1")
     app = AppTest.from_file(APP, default_timeout=30).run()
     assert not app.exception

@@ -1,4 +1,4 @@
-# Menu photos
+# 메뉴 사진
 
 AI-generated illustrative Korean pub food and beverage photos; these are not
 photos of the restaurant's actual servings. Original generated images stay

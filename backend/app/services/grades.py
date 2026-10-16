@@ -34,3 +34,11 @@ def age_group(birth_year: int | None, today: date) -> str | None:
 
 def gender_label(g: str | None) -> str | None:
     return {"male": "남", "female": "여", "남": "남", "여": "여"}.get(g or "")
+
+
+def grade_counts(members: list[dict], today: date, **rule) -> dict:
+    """기존 등급 판정 함수를 재사용해 인원을 집계한다. DB에 등급을 저장하지 않는다."""
+    counts = {grade: 0 for grade in GRADES}
+    for member in members:
+        counts[grade_of(member, today, **rule)] += 1
+    return {**counts, "dormant_count": counts["휴면"]}

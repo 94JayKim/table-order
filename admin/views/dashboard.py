@@ -110,13 +110,15 @@ def render_operations(repo, s):
     """고객 관리(휴면·수신 동의)와 메뉴 운영(품절) 알림."""
     sec_title("고객 관리 · 운영 알림")
     care = customer_care(repo.members(ss["grade_rule"]))
+    # 고객 등급 화면과 같은 전용 집계 API를 써서 휴면 고객 수의 계산 기준을 맞춘다.
+    dormant_count = repo.customer_grades(ss["grade_rule"])["dormant_count"]
     alerts = menu_alerts(repo.menus(), s["popular_menus"])
     names = ", ".join(alerts["sold_out"][:4]) + (f" 외 {len(alerts['sold_out']) - 4}개" if len(alerts["sold_out"]) > 4 else "")
     cards = []
     if care["total"]:
         cards += [
             kpi("전체 회원", care["total"], "명", sub=f"수신거부 {care['opted_out']}명"),
-            kpi("휴면 고객", care["dormant"], "명", sub=f"전체의 {care['dormant'] / care['total']:.0%}"),
+            kpi("휴면 고객", dormant_count, "명", sub=f"전체의 {dormant_count / care['total']:.0%}"),
             kpi("문자 수신 가능", care["consent"], "명", sub=f"전체의 {care['consent'] / care['total']:.0%}가 동의"),
         ]
     cards += [

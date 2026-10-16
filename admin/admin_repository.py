@@ -93,6 +93,14 @@ class ApiBackend:
     def members(self, rule):
         return api.get(ENDPOINTS["members"], self.token, params=rule)
 
+    def customer_grades(self, rule):
+        """고객 등급 카드와 대시보드가 함께 쓰는 서버 집계 결과."""
+        return api.get("/admin/api/customers/grades", self.token, params=rule)
+
+    def customer_grade_rules(self):
+        """서버에 설정된 기본 등급 기준을 조회한다."""
+        return api.get("/admin/api/customers/grades/rules", self.token)
+
     def orders(self):
         return api.get(ENDPOINTS["orders"], self.token)
 
@@ -361,6 +369,14 @@ class AdminRepository:
         self.backend.save_roulette_prizes(prizes)
 
     # ---- 고객 / 주문 / 통계 ----
+    def customer_grades(self, rule: dict | None = None) -> dict:
+        """화면에서 다시 세지 않고 백엔드가 집계한 등급별 인원을 사용한다."""
+        return self.backend.customer_grades(rule if rule is not None else self.customer_grade_rules())
+
+    def customer_grade_rules(self) -> dict:
+        """더미·API 여부와 관계없이 현재 기본 기준을 가져온다."""
+        return self.backend.customer_grade_rules()
+
     def members(self, rule: dict | None = None) -> pd.DataFrame:
         rows = self.backend.members(rule or DEFAULT_RULE)["members"]
         return pd.DataFrame([{

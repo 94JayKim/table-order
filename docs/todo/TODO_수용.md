@@ -19,7 +19,7 @@
 | 순서 | 할 일 | API | 상태 |
 |---|---|---|---|
 | 0 | 0. 개발 흐름 확인 (테스트 버튼) | `POST /api/dev/db-test` (개발 전용) | 확인 전 |
-| 1 | 1. 고객 등급 · 수신거부 점검 | `GET /api/admin/customers`, `…/customers/grades`, `…/grades/rules`, `POST …/customers/{id}/opt-out` | 구현 / 부분 구현 |
+| 1 | 1. 고객 등급 · 수신거부 점검 | `GET /api/admin/customers`, `…/customers/grades`, `…/grades/rules`, `POST …/customers/{id}/opt-out` | 1-1 기존 구현 / 1-2 구현·자동 테스트 완료 |
 | 2 | 2. 대시보드 기본 통계 | `GET /api/admin/stats/sales`, `stats/menus/ranking`, `stats/customers`, `stats/ai-recommendations` | 더미 |
 | 3 | 3. 대시보드 추가 통계 | `stats/sales/hourly·trends·weekday·tickets`, `stats/tables` | 미구현 |
 | 4 | 4. 운영 알림 | `GET /api/admin/alerts` | 미구현 |
@@ -83,12 +83,14 @@ UI(고객 등급 · 기준 조절) → A/views/customers.py → repo.members(rul
 
 **상세 설명 / TODO**
 
-- [ ] 수신거부 API는 이미 구현(`member_opt_out`)이라 수정 없음. 문자 발송(성호)이 같은 `members.opted_out`을 읽으므로 컬럼 의미를 바꾸지 않는다.
-- [ ] 신규 엔드포인트는 같은 파일 `members.py`의 **아래쪽에 추가**만 한다(기존 함수 수정 금지).
+- [x] 수신거부 API는 이미 구현(`member_opt_out`)이라 수정 없음. 문자 발송(성호)이 같은 `members.opted_out`을 읽으므로 컬럼 의미를 바꾸지 않는다.
+- [x] 신규 엔드포인트는 같은 파일 `members.py`의 **아래쪽에 추가**만 한다(기존 함수 수정 금지).
 
-### 1-2. `GET /api/admin/customers/grades`, `GET /api/admin/customers/grades/rules` (부분 구현)
+### 1-2. `GET /admin/api/customers/grades`, `GET /admin/api/customers/grades/rules` (구현·자동 테스트 완료)
 
-**목표**: `grades`는 등급별 고객 수 + 휴면 수, `grades/rules`는 현재 등급 기준(`repeat`, `regular`, `dormant`)을 돌려준다. 지금은 `list_members` 응답 안의 `rule`/`grade`를 화면이 모아서 쓴다. 전용 엔드포인트로 분리한다.
+**목표**: `grades`는 등급별 고객 수 + 휴면 수, `grades/rules`는 현재 등급 기준(`repeat`, `regular`, `dormant`)을 돌려준다. 기존에는 `list_members` 응답 안의 `rule`/`grade`를 화면이 모아서 썼으며, 이제 전용 엔드포인트로 분리했다.
+
+**실제 경로**: `docs/개발_가이드.md`의 관리자 경로 규칙(`/admin/api/...`)을 따른다. 기획서의 `/api/admin/...` 표기와 구분한다.
 
 **테스트 방법**: 새 `BT/test_customer_grades.py` — 회원 4명(신규/재방문/단골/휴면 각 1명)을 만들고 `grades`가 `{신규:1, 재방문:1, 단골:1, 휴면:1}` / `rules`가 설정값(`GRADE_REPEAT_VISITS` 등)과 같음 / 쿼리로 기준을 바꾸면 분포가 바뀜 / 인증 없으면 401.
 
@@ -104,9 +106,22 @@ UI(대시보드 · 등급 카드 / 고객 등급 기준 패널) → A/views/dash
 
 **상세 설명 / TODO**
 
-- [ ] `grades`, `grades/rules` 두 함수를 `members.py` 맨 아래에 추가(경로 충돌 주의: `/customers/grades`가 `/customers/{customerId}/…`보다 **먼저** 선언돼야 한다).
-- [ ] 경로 문서(v7)는 `/api/admin/customers…`이고 코드는 `/admin/api/members…`이다. 새 경로를 추가하되 기존 `/members`는 유지(별칭)해서 화면과 성호의 문자 기능이 깨지지 않게 한다.
-- [ ] 이 두 API는 대시보드 표(2-5)와 같은 함수를 쓴다. 한 번만 구현한다.
+- [x] `grades`, `grades/rules` 두 함수를 `members.py` 맨 아래에 추가(경로 충돌 주의: `/customers/grades`가 `/customers/{customerId}/…`보다 **먼저** 선언돼야 한다).
+- [x] 새 `/admin/api/customers` 경로를 추가하고 기존 `/admin/api/members` 및 수신거부 응답을 유지한다. 목록·수신거부 별칭은 기존 함수를 그대로 사용한다.
+- [x] 고객 등급 카드·기준 미리보기·대시보드 휴면 고객 수가 같은 집계 API를 사용한다. 등급 계산은 기존 `grade_of()`를 재사용한다.
+
+**2026-10-16 구현·검증 기록**
+
+- `services/grades.py`의 `grade_counts()`가 회원 방문 기록을 읽어 인원을 집계한다. 새 테이블이나 등급 저장 컬럼은 추가하지 않았다.
+- 기준 조회 API의 서버 설정을 화면 초기값·기본값 복원에 사용한다. 미리보기는 요청 쿼리로만 적용하며 설정·방문 기록을 저장하지 않는다.
+- 등급 분류 기준 화면에 실시간 고객 수 카드를 추가했다. 예시 회원 4명에서 단골 기준을 5회 → 10회로 바꾸면 재방문 1명 → 2명, 단골 1명 → 0명으로 바뀌는 것을 확인했다.
+- 새 서버 테스트 `BT/test_customer_grades.py`: 16개 통과(등급별 집계, 빈 DB, 설정·쿼리 우선순위, 미리보기 미저장, 잘못된 기준 422, 인증 401, 기존 경로 호환, KST 경계).
+- 새 화면 테스트 `T/test_sooyong_customer_grades.py`: 3개 통과(서버·더미 응답 계약, 서버 기본값·미리보기·초기화, 빈 회원 목록).
+- 전체 테스트: 서버 **77 passed, 10 skipped**, 화면·통합 **102 passed, 12 skipped**. 기존 skip은 변경하지 않았다.
+- 화면·통합 테스트는 서버 가상환경 Python에 루트 가상환경 패키지 경로를 추가해 실행했다. 의존성 파일은 변경하지 않았다.
+- 전후 이미지 검증은 별도 메모리 DB·로컬 서버에서 진행했다. 실제 Supabase 데이터는 변경하지 않았다.
+- 실제 Supabase 조회도 추가 확인했다: 필요한 테이블 27개 존재, 회원 41명, 신규 11명·재방문 12명·단골 10명·휴면 8명. 기존 8000번 서버의 DB 점검·등급 기준·등급 집계 API가 모두 200으로 응답했다.
+- API 모드 관리자 화면(18502번)을 별도로 실행하고 고객 목록 41명이 오류 없이 표시되는 것을 확인했다. 수신거부 등 실제 DB 변경 작업은 수행하지 않았다.
 
 ---
 

@@ -156,6 +156,17 @@ class DummyBackend:
         self.menus_ = [m for m in self.menus_ if m["id"] != menu_id]
 
     # ---- 고객 / 주문 / 통계 --------------------------------------------------------
+    def customer_grades(self, rule: dict) -> dict:
+        """서버 없이도 새 API와 같은 응답 모양으로 고객 등급 화면을 확인한다."""
+        counts = {grade: 0 for grade in GRADES}
+        for member in self.members(rule)["members"]:
+            counts[member["grade"]] += 1
+        return {**counts, "dormant_count": counts["휴면"]}
+
+    def customer_grade_rules(self) -> dict:
+        """더미 모드에서 사용하는 기본 등급 기준. 서버 설정을 읽거나 저장하지 않는다."""
+        return {"repeat": 2, "regular": 5, "dormant": 60}
+
     def members(self, rule: dict) -> dict:
         return {"rule": rule, "members": [{
             "id": m["id"], "nickname": m["nickname"], "gender": m["gender"], "age_group": _age_group(m["birth_year"]),

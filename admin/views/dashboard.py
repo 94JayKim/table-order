@@ -9,6 +9,11 @@ from dashboard_stats import customer_care, menu_alerts, summarize
 ss = st.session_state
 
 
+def _render_panel_grid(*cards):
+    """그래프를 같은 격자에 넣어 열 너비·행 높이·카드 사이 간격을 맞춘다."""
+    st.html('<div class="dashboard-panels">' + "".join(cards) + '</div>')
+
+
 def render_sales_insights(s, x):
     """주문·매출 지표와 매출 그래프만 한 영역에 모아 보여 준다."""
     sec_title("매출", "오늘 · 최근 7일 · 최근 30일을 한 번에 비교해요")
@@ -29,12 +34,12 @@ def render_sales_insights(s, x):
         kpi("최근 평균 객단가", f"{x['avg_ticket']:,}", "원", sub=f"최근 주문 {x['orders']:,}건 기준"),
         min_width=180,
     )
-    l, r = st.columns(2, gap="medium")
-    l.html(panel("시간대별 매출", f"가장 바쁜 시간은 {x['peak_hour']}", bars(x["by_hour"], "원")))
-    r.html(panel("요일별 매출", f"매출이 가장 높은 요일은 {x['peak_weekday']}요일", bars(x["by_weekday"], "원")))
-    l, r = st.columns([3, 2], gap="medium")
-    l.html(panel("일별 매출 (최근 14일)", "하루 매출 흐름", bars(x["by_day"], "원")))
-    r.html(panel("주문 금액대 분포", "한 번에 얼마씩 주문하는지", bars(x["ticket_bands"], "건")))
+    _render_panel_grid(
+        panel("시간대별 매출", f"가장 바쁜 시간은 {x['peak_hour']}", bars(x["by_hour"], "원")),
+        panel("요일별 매출", f"매출이 가장 높은 요일은 {x['peak_weekday']}요일", bars(x["by_weekday"], "원")),
+        panel("일별 매출 (최근 14일)", "하루 매출 흐름", bars(x["by_day"], "원")),
+        panel("주문 금액대 분포", "한 번에 얼마씩 주문하는지", bars(x["ticket_bands"], "건")),
+    )
 
 
 def render_order_customers(x, s):
@@ -60,13 +65,17 @@ def render_order_customers(x, s):
                for c in x["top_customers"]}
         st.html(panel("오늘 매출 TOP 5", "회원 여부 · 오늘 결제금액 · 마지막 주문 테이블",
                       bars(top, "원", ranked=True, empty="오늘 주문이 아직 없어요.")))
-    top_l, top_r = st.columns(2, gap="medium")
-    bot_l, bot_r = st.columns(2, gap="medium")
+    cards = []
     if not x["empty"]:
-        top_l.html(panel("고객 등급별 주문 고객", "최근 주문한 고객 수", bars(x["customer_grades"], "명")))
-        top_r.html(panel("오늘 주문이 많은 테이블 TOP 5", "오늘 주문 건수 기준", bars(x["top_tables"], "건", ranked=True)))
-    bot_l.html(panel("고객 연령대", "출생연도를 입력한 회원만 집계해요", bars(s["age_groups"], "명")))
-    bot_r.html(panel("고객 성별", "회원 정보 기준", bars(s["genders"], "명")))
+        cards.extend([
+            panel("고객 등급별 주문 고객", "최근 주문한 고객 수", bars(x["customer_grades"], "명")),
+            panel("오늘 주문이 많은 테이블 TOP 5", "오늘 주문 건수 기준", bars(x["top_tables"], "건", ranked=True)),
+        ])
+    _render_panel_grid(
+        *cards,
+        panel("고객 연령대", "출생연도를 입력한 회원만 집계해요", bars(s["age_groups"], "명")),
+        panel("고객 성별", "회원 정보 기준", bars(s["genders"], "명")),
+    )
 
 
 def delta_text(change, base):
@@ -86,14 +95,15 @@ def render_trend_insights(x, popular_menus=None):
         kpi("마지막 영업일 매출", f"{x['last_day_revenue']:,}", "원", sub=delta_text(x["last_day_change"], "지난주 같은 요일")),
         kpi("최근 30일 매출", f"{x['revenue']:,}", "원", sub=f"하루 평균 {x['daily_revenue']:,}원"),
     )
-    l, r = st.columns([3, 2], gap="medium")
-    l.html(panel("일별 매출 (최근 14일)", "하루 매출 흐름", bars(x["by_day"], "원")))
+    _render_panel_grid(
+        panel("일별 매출 (최근 14일)", "하루 매출 흐름", bars(x["by_day"], "원")),
+        panel("주문 금액대 분포", "한 번에 얼마씩 주문하는지", bars(x["ticket_bands"], "건")),
+    )
     if popular_menus is not None:
         # 첫 화면에서 매출 흐름을 본 다음 바로 인기 메뉴를 확인할 수 있도록 기존 패널을 그대로 한 번 더 보여 준다.
-        l.html(panel("인기 메뉴 TOP 10", "주문 수량 기준",
-                     bars({menu["name"]: menu["qty"] for menu in popular_menus}, "개", ranked=True,
-                          empty="아직 주문이 없어요.")))
-    r.html(panel("주문 금액대 분포", "한 번에 얼마씩 주문하는지", bars(x["ticket_bands"], "건")))
+        st.html(panel("인기 메뉴 TOP 10", "주문 수량 기준",
+                      bars({menu["name"]: menu["qty"] for menu in popular_menus}, "개", ranked=True,
+                           empty="아직 주문이 없어요.")))
 
 
 def render_operations(repo, s):
@@ -123,6 +133,13 @@ def render_today_sales(s, x):
 
 def page_dashboard(repo, sub="한눈에 보기"):
     """첫 화면은 오늘·매출과 매출 추이를 함께 보여 주고, 상세 영역은 사이드바에서 따로 볼 수 있다."""
+    # 전용 컨테이너 안에서만 간격을 조정해 다른 담당자의 화면에는 영향을 주지 않는다.
+    with st.container(key="dashboard_layout"):
+        _render_dashboard(repo, sub)
+
+
+def _render_dashboard(repo, sub):
+    """대시보드 전용 간격 설정이 적용되는 영역에 기존 화면을 그린다."""
     s = repo.stats(ss["grade_rule"])
     ai = s["ai"]
     # 회전율의 분모는 주문이 발생한 테이블 수가 아니라 매장에 등록된 전체 테이블 수여야 한다.
@@ -143,17 +160,20 @@ def page_dashboard(repo, sub="한눈에 보기"):
     elif sub == "고객 분석":
         render_order_customers(x, s)
     else:  # 메뉴 · 운영
-        l, r = st.columns([3, 2], gap="medium")
-        l.html(panel("인기 메뉴 TOP 10", "주문 수량 기준",
-                     bars({m["name"]: m["qty"] for m in s["popular_menus"]}, "개", ranked=True, empty="아직 주문이 없어요.")))
-        with r:
-            kpi_row(kpi("AI 추천 적중률", f"{ai['hit_rate']:.0%}" if ai["hit_rate"] is not None else "-",
-                        sub="임시 기준 · 계산 기준은 추가 정의가 필요해요"),
-                    kpi("추천 노출", ai["recommendations"], "회", sub=f"조합이 포함된 주문 {ai['ai_orders']}건"),
-                    min_width=120)
-            if not x["empty"] and x["ai_avg_ticket"] is not None and x["plain_avg_ticket"] is not None:
-                kpi_row(
-                    kpi("AI 추천 주문 객단가", f"{x['ai_avg_ticket']:,}", "원", sub=f"전체 주문의 {x['ai_share']:.0%}"),
-                    kpi("일반 주문 객단가", f"{x['plain_avg_ticket']:,}", "원"),
-                    min_width=120)
+        # 운영 화면도 같은 격자를 사용하고 AI 카드는 한 묶음으로 배치해 행 사이 간격을 맞춘다.
+        ai_cards = [
+            kpi("AI 추천 적중률", f"{ai['hit_rate']:.0%}" if ai["hit_rate"] is not None else "-",
+                sub="임시 기준 · 계산 기준은 추가 정의가 필요해요"),
+            kpi("추천 노출", ai["recommendations"], "회", sub=f"조합이 포함된 주문 {ai['ai_orders']}건"),
+        ]
+        if not x["empty"] and x["ai_avg_ticket"] is not None and x["plain_avg_ticket"] is not None:
+            ai_cards.extend([
+                kpi("AI 추천 주문 객단가", f"{x['ai_avg_ticket']:,}", "원", sub=f"전체 주문의 {x['ai_share']:.0%}"),
+                kpi("일반 주문 객단가", f"{x['plain_avg_ticket']:,}", "원"),
+            ])
+        _render_panel_grid(
+            panel("인기 메뉴 TOP 10", "주문 수량 기준",
+                  bars({m["name"]: m["qty"] for m in s["popular_menus"]}, "개", ranked=True, empty="아직 주문이 없어요.")),
+            '<div class="dashboard-menu-kpis">' + "".join(ai_cards) + '</div>',
+        )
         render_operations(repo, s)

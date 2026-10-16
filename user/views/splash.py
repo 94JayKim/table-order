@@ -4,6 +4,7 @@
 from html import escape
 
 import streamlit as st
+import os
 
 from user.state import context as ctx
 from user.state.login import poll_login_once
@@ -12,6 +13,8 @@ from user.state.session import go
 from user.ui.common import mini_buttons
 from user.ui.login import login_dialog, render_members_log
 from user.ui.roulette import render_roulette
+from shared import api
+import user.user_repository as repository
 
 
 def render_splash():
@@ -34,6 +37,13 @@ def render_splash():
                         '<div class="c">로그인하지 않아도<br>주문은 할 수 있어요.</div></div>')
             if st.button("➕ 다른 회원 로그인" if member else "📱 로그인", key="login_open"):
                 login_dialog("more")
+            if os.getenv("DEV_TEST_BUTTON", "").strip() == "1":
+                if st.button("🧪 DB 테스트", key="dev_db_test"):
+                    try:
+                        result = repository.ApiRepository().run_dev_db_test()
+                        st.success("DB 테스트 결과: 1" if result.get("result") == 1 else "DB 테스트 결과: 0")
+                    except (api.ApiError, api.ApiUnavailable) as e:
+                        st.error(f"DB 테스트 실패: {e}")
         with st.container(key="start_cta"):
             st.button("🍴 회원 주문  ›" if member else "🍴 비회원 주문  ›", type="primary", width="stretch",
                       key="start_btn", on_click=go, args=("menu",))

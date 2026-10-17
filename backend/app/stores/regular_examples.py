@@ -103,3 +103,12 @@ def seed_regular_examples(db: Database, today: date, *, reset_examples: bool = F
                         (order_id, menu_id, menu["name"], 1, menu["price"], "menu"))
                     created_orders += 1
     return {**restored, "created_members": created_members, "created_orders": created_orders}
+
+
+def remove_regular_examples(db: Database) -> dict:
+    """식별값·주문 내역이 그대로인 예시 3명만 연결된 예시 주문과 함께 제거한다."""
+    with db._lock:
+        # 기존의 대상 검사를 재사용하고, 제거 중 실패해도 일부만 삭제되지 않게 한다.
+        transaction = db._conn.transaction() if db.pg else db._conn
+        with transaction:
+            return _restore_example_records(db)

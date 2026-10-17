@@ -53,22 +53,13 @@ def render_order_customers(x, s):
             kpi("오늘 재방문 고객", s["returning_customers"], "명"))
     if not x["empty"]:
         member_sub = f"회원 {x['member_revenue']:,}원 · 비회원 {x['guest_revenue']:,}원"
-        top_kinds = {kind: sum(1 for customer in x["top_customers"] if customer["kind"] == kind)
-                     for kind in ("회원", "비회원")}
-        top_tables = ", ".join(f"{table}번" for table in dict.fromkeys(customer["table"] for customer in x["top_customers"]))
         kpi_row(
             kpi("재방문 고객 비율", f"{x['returning_share']:.0%}" if x["returning_share"] is not None else "-",
                 sub="최근 주문 고객 중 재방문·단골"),
             kpi("마지막 영업일 회원 매출 비중", f"{x['member_revenue_share']:.0%}" if x["member_revenue_share"] is not None else "-",
                 sub=member_sub),
-            kpi("마지막 영업일 상위 5팀 매출 비중", f"{x['top_customer_share']:.0%}" if x["top_customer_share"] is not None else "-",
-                sub=f"회원 {top_kinds['회원']}팀 · 비회원 {top_kinds['비회원']}팀 · {top_tables}"),
             min_width=150,
         )
-        top = {f"[{c['kind']}] {c['name']} · {c['table']}번 테이블 · {c['orders']}회": c["amount"]
-               for c in x["top_customers"]}
-        st.html(panel("마지막 영업일 매출 TOP 5", "회원 여부 · 해당 영업일 결제금액 · 마지막 주문 테이블",
-                      bars(top, "원", ranked=True, empty="오늘 주문이 아직 없어요.")))
     cards = []
     if not x["empty"]:
         cards.extend([

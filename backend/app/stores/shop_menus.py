@@ -3,14 +3,23 @@
 MENU_FIELDS = ("name", "cat", "price", "desc", "image_url", "soldout", "spicy", "weight", "set_ok", "emoji", "tags")
 
 # 컬럼 이름은 Supabase 스키마(db/fbgrowth_schema.sql)를 따른다. 밖으로는 예전 키(cat, desc, soldout)로 내보낸다.
-SCHEMA = """
+SCHEMA = """\
 CREATE TABLE IF NOT EXISTS menus (
-    id TEXT PRIMARY KEY, category_id TEXT NOT NULL, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
-    price INTEGER NOT NULL, emoji TEXT NOT NULL DEFAULT '🍽️', tags TEXT NOT NULL DEFAULT '[]',
-    is_soldout INTEGER NOT NULL DEFAULT 0, spicy INTEGER NOT NULL DEFAULT 0, weight INTEGER NOT NULL DEFAULT 50,
-    set_ok INTEGER NOT NULL DEFAULT 0, image_url TEXT NOT NULL DEFAULT '', sort_order INTEGER NOT NULL DEFAULT 0);
+    id          TEXT PRIMARY KEY,
+    category_id TEXT NOT NULL,
+    name        TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    price       INTEGER NOT NULL,
+    emoji       TEXT NOT NULL DEFAULT '🍽️',
+    tags        TEXT NOT NULL DEFAULT '[]',
+    is_soldout  INTEGER NOT NULL DEFAULT 0,
+    spicy       INTEGER NOT NULL DEFAULT 0,
+    weight      INTEGER NOT NULL DEFAULT 50,
+    set_ok      INTEGER NOT NULL DEFAULT 0,
+    image_url   TEXT NOT NULL DEFAULT '',
+    sort_order  INTEGER NOT NULL DEFAULT 0
+);
 """
-
 
 class MenuMixin:
     def seed_menus(self) -> None:

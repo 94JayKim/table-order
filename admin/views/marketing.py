@@ -10,7 +10,7 @@ import admin_repository as repo_mod
 import marketing_ai
 from admin.marketing.config import RECOMMENDATION_PAGE_SIZE
 from admin.marketing.recommendations import pick_recommendations as pick_recommendation_page
-from admin.marketing.recommendations import regular_preference_cards
+from admin.marketing.recommendations import regular_preference_cards, regular_preference_preview_cards
 from admin.ui.widgets import kpi, page_head, sec_title
 from admin_dummy_data import Unsupported
 from admin_repository import GRADES
@@ -236,7 +236,7 @@ def pick_recommendations(recs, round_no):
 
 
 def _render_regular_preferences(repo):
-    """기존 AI 추천 아래에 오늘 주문한 단골의 방문·메뉴 정보를 추가한다."""
+    """실제 주문 단골의 멘트를 우선 표시하고, 손님이 없으면 추천 예정 예시를 보여준다."""
     try:
         cards = regular_preference_cards(repo.regular_preferences())
     except (repo_mod.api.ApiError, repo_mod.api.ApiUnavailable):
@@ -244,8 +244,13 @@ def _render_regular_preferences(repo):
         st.info("단골 손님 정보를 불러오지 못했어요. 잠시 후 재추천을 눌러 주세요.")
         return
     if not cards:
-        return
-    sec_title("단골 손님 응대 제안", "주문이 확인된 손님에게 메뉴를 건넬 때 참고해 주세요")
+        # DB에 예시 회원을 넣지 않고도 발표에서 추천 동작과 문구를 보여줄 수 있게 한다.
+        cards = regular_preference_preview_cards()
+        sec_title("단골 손님 응대 제안", "AI가 추천할 예정인 멘트를 미리 확인해 보세요")
+        st.caption("지금은 추천 예정 멘트를 예시로 보여드려요. 실제 단골 손님이 방문해 주문하면, "
+                   "그 손님의 방문·주문 기록에 맞는 멘트가 표시되며 문구는 달라질 수 있어요.")
+    else:
+        sec_title("단골 손님 응대 제안", "주문이 확인된 손님에게 메뉴를 건넬 때 참고해 주세요")
     # 한 안내 안에서 손님별 제안을 읽기 쉽도록 줄바꿈하며, DB 텍스트는 먼저 이스케이프한다.
     body = "".join(f'<div class="rec" style="grid-column:1 / -1"><div class="rt">{escape(card["title"])}</div>'
                    f'<div class="rw">{escape(card["why"])}</div>'

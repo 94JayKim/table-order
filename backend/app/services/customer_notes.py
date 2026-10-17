@@ -13,6 +13,47 @@ MIN_HISTORY_DAYS = 5
 MIN_PREFERENCE_PERCENT = 80
 
 
+def _visit_greeting(member: dict, history: dict, today: date, delivery: str,
+                    regular_visits: int) -> tuple[str, str]:
+    """방문 감사는 메뉴 선호율과 무관하게, 확인된 방문·주문 상황으로 고른다."""
+    gap = (today - max(history)).days if history else None
+    varied = len(history) >= 3 and len(set().union(*history.values())) >= 3
+    detail = ""
+    if gap is not None and gap >= 14:
+        detail = f" 이전 주문은 {gap}일 전입니다."
+        suggestions = (
+            "다시 뵈니 반갑습니다. 또 찾아주셔서 감사해요! 오늘도 편하게 즐기다 가세요.",
+            f"다시 찾아주셔서 반갑습니다! 주문하신 {delivery} 맛있게 드세요.",
+            "또 뵙게 되어 기쁩니다. 오늘도 즐거운 시간 보내세요!",
+        )
+    elif varied:
+        detail = " 이전 주문에서 여러 안주를 고르신 기록이 있습니다."
+        suggestions = (
+            f"또 찾아주셔서 감사합니다! 오늘 고르신 {delivery}도 맛있게 즐겨 주세요.",
+            f"다시 뵈니 반갑습니다. {delivery} 준비해 드렸어요. 드셔 보시고 편하게 말씀해 주세요!",
+            "자주 찾아주셔서 감사해요. 오늘도 입맛에 맞게 즐기셨으면 좋겠습니다!",
+        )
+    elif member["visit_count"] == regular_visits:
+        suggestions = (
+            "벌써 여러 번 찾아주셨네요. 계속 찾아주셔서 감사합니다! 오늘도 편하게 즐기세요.",
+            f"또 찾아주셔서 감사합니다. 오늘 주문하신 {delivery}도 맛있게 드세요!",
+            "다시 뵈어 반갑습니다. 자주 찾아주시는 만큼 오늘도 정성껏 준비해 드릴게요!",
+        )
+    elif member["visit_count"] >= 10:
+        suggestions = (
+            "늘 찾아주셔서 감사합니다. 오늘도 편안하고 즐거운 시간 보내세요!",
+            f"자주 뵈니 반갑습니다! 오늘 주문하신 {delivery}도 맛있게 드세요.",
+            "꾸준히 찾아주셔서 감사해요. 필요한 것이 있으면 언제든 편하게 말씀해 주세요!",
+        )
+    else:
+        suggestions = (
+            "다시 찾아주셔서 감사합니다. 오늘도 편하게 즐기다 가세요!",
+            f"또 뵈니 반갑습니다! 오늘 주문하신 {delivery}도 맛있게 드세요.",
+            "자주 찾아주셔서 감사해요. 드시다가 필요한 것 있으면 편하게 말씀해 주세요!",
+        )
+    return detail, suggestions[member["id"] % len(suggestions)]
+
+
 def regular_notes(members: list[dict], orders: list[dict], lines: list[dict],
                   menus: list[dict], today: date, dormant_days: int = 30, regular_visits: int = 5) -> list[dict]:
     """오늘 주문한 단골을 모두 안내하고, 근거가 충분할 때만 선호 안주를 덧붙인다."""
@@ -78,6 +119,9 @@ def regular_notes(members: list[dict], orders: list[dict], lines: list[dict],
         name = by_id[favorite]["name"] if favorite else None
         changed_today = favorite not in current_menus if favorite else None
         context = f"로그인 기록 기준 {member['visit_count']}번째 방문인 단골 손님입니다. 오늘 주문: {', '.join(today_menus)}."
+        # 기본 방문 인사에는 취향 비율을 섞지 않고, 선택 안내에만 메뉴 선호 근거를 둔다.
+        visit_detail, visit_note = _visit_greeting(member, history, today, delivery, regular_visits)
+        visit_context = context + visit_detail
         if favorite:
             context += f" 이전 주문일 {len(history)}일 중 {frequency}일에 {name} 메뉴를 주문했습니다(80% 이상)."
             if changed_today:
@@ -100,12 +144,7 @@ def regular_notes(members: list[dict], orders: list[dict], lines: list[dict],
                 f"늘 찾아주셔서 감사합니다. 오늘은 {delivery} 즐겨 보시고 어떠셨는지 편하게 말씀해 주세요!",
             )
         else:
-            # 메뉴 취향을 모르는 경우에도 방문에 대한 감사는 전할 수 있다.
-            suggestions = (
-                "다시 찾아주셔서 감사합니다. 오늘도 편하게 즐기다 가세요!",
-                f"또 뵈니 반갑습니다! 오늘 주문하신 {delivery}도 맛있게 드세요.",
-                "꾸준히 찾아주셔서 감사해요. 드시다가 필요한 것 있으면 편하게 말씀해 주세요!",
-            )
+            suggestions = (visit_note,)
         # 같은 손님에게 새로고침마다 말이 바뀌지 않도록 고르되, 문구 선택은 사장님에게 맡긴다.
         note = suggestions[member["id"] % len(suggestions)]
         result.append({
@@ -114,6 +153,7 @@ def regular_notes(members: list[dict], orders: list[dict], lines: list[dict],
             "preference_rate": rate, "changed_today": changed_today, "context": context,
             "today_table": latest["table_no"], "today_menus": today_menus,
             "delivery_menu": delivery, "current_order_id": latest["id"], "note": note,
+            "visit_context": visit_context, "visit_note": visit_note,
         })
     # 비율별로 등급을 나누지 않고, 실제 오늘 주문 테이블 순서로 안내한다.
     return sorted(result, key=lambda row: (row["today_table"], row["member_id"]))

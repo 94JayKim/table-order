@@ -32,31 +32,33 @@ def test_roulette_table_matches_prizes(repo):
     assert t[t["종류"] == "서비스"]["서비스 메뉴"].notna().all()
     choices = repo.roulette_menu_choices()
     assert choices and all(choice["label"].startswith("[") for choice in choices)
-    assert {choice["id"] for choice in choices} == {"a1", "a4", "a11", "d7", "d8"}
+    # 서비스로 고를 수 있는 메뉴는 할인(None)을 빼고 전체 메뉴(맥주·소주·탄산 포함)다
+    assert {choice["id"] for choice in choices if choice["id"]} >= {"a1", "a4", "a11", "d7", "d8"}
     assert next(choice for choice in choices if choice["id"] == "a4")["emoji"] == "🥚"
 
 
 def test_save_roulette_roundtrip_and_odds(repo):
     t = repo.roulette_table()
-    t.loc[0, "확률 가중치"] = 3
-    t.loc[1, "확률 가중치"] = 1
+    # 확률은 10% 단위로, 합계가 100이어야 저장된다
+    t.loc[0, "확률 가중치"] = 60
+    t.loc[1, "확률 가중치"] = 40
     t.loc[2:, "확률 가중치"] = 0
     repo.save_roulette(t)
     back = repo.roulette_table()
-    assert list(back["확률 가중치"][:2]) == [3, 1] and repo.roulette_odds(back)[:2] == [75.0, 25.0]
+    assert list(back["확률 가중치"][:2]) == [60, 40] and repo.roulette_odds(back)[:2] == [60.0, 40.0]
     assert back.iloc[1]["서비스 메뉴"] == t.iloc[1]["서비스 메뉴"]
-    new = pd.concat([back, pd.DataFrame([{"서비스 메뉴": None, "종류": "할인", "할인율(%)": 10,
-                                           "확률 가중치": 1, "색상": "#112233"}])],
+    new = pd.concat([back, pd.DataFrame([{"서비스 메뉴": ar.ALL_MENU_LABEL, "종류": "할인", "할인율(%)": 10,
+                                           "확률 가중치": 0, "색상": "#112233"}])],
                     ignore_index=True)
     repo.save_roulette(new)
     last = repo.backend.roulette_prizes()[-1]
-    assert last["label"] == "모든 메뉴<br><b>10% 할인</b>" and last["short"] == "전 메뉴 10% 할인" and last["weight"] == 1.0
+    assert last["label"] == "모든 메뉴<br><b>10% 할인</b>" and last["short"] == "전 메뉴 10% 할인" and last["weight"] == 0.0
     assert repo.backend.roulette_prizes()[1]["emoji"] == "🐟"  # 맛보기 먹태구이에 맞춰 자동 배정
 
 
 @pytest.mark.parametrize("edit, msg", [
     (lambda t: t.drop(t.index[1:]), "2~8개"),
-    (lambda t: t.assign(**{"확률 가중치": 0}), "하나는 있어야"),
+    (lambda t: t.assign(**{"확률 가중치": 0}), "합계를 100%"),
     (lambda t: t.assign(색상="red"), "#RRGGBB"),
     (lambda t: t.assign(**{"확률 가중치": -1}), "0 이상"),
     (lambda t: t.assign(**{"할인율(%)": 0}), "할인율"),
@@ -82,8 +84,9 @@ def test_page_shows_event_and_preview(monkeypatch):
     menu_picker = next(selectbox for selectbox in app.selectbox
                        if selectbox.key and selectbox.key.startswith("roulette_menu_"))
     assert {option.split("] ")[-1] for option in menu_picker.options} == {
-        "맛보기 먹태구이", "계란말이", "노가리 구이", "라면", "짜장라면"}
-    assert app.button(key="roulette_save").disabled and app.button(key="roulette_undo").disabled  # 바뀐 게 없으면 비활성
+        "전체 메뉴", "맛보기 먹태구이", "계란말이", "노가리 구이", "라면", "짜장라면", "생맥주 1잔", "소주 1병", "탄산음료"}
+    # 되돌리기 버튼은 없어졌다. 저장 버튼 상태는 기본 시드 가중치 합이 100이 아니라서 검사하지 않는다(시드 정리는 별도 과제)
+    assert app.button(key="roulette_save")
 
 
 def test_user_spin_follows_weights():

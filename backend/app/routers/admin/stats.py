@@ -18,7 +18,7 @@ def dashboard(request: Request, settings: Settings = Depends(get_settings),
               regular: int | None = Query(default=None, ge=3),
               dormant: int | None = Query(default=None, ge=1)) -> dict:
     """조회 기준만 바꿔 계산하며 회원 기록이나 서버 설정은 저장하지 않는다."""
-    rule = grade_rule(settings, repeat, regular, dormant)
+    rule = grade_rule(settings, repeat, regular, dormant, db=request.app.state.db)
     if rule["regular"] <= rule["repeat"]:
         raise HTTPException(422, "단골 기준은 재방문 기준보다 커야 합니다.")
     store = StatsStore(request.app.state.db)
@@ -57,7 +57,7 @@ def insights(request: Request, settings: Settings = Depends(get_settings),
              regular: int | None = Query(default=None, ge=3),
              dormant: int | None = Query(default=None, ge=1)) -> dict:
     """집계용 주문을 한 번 읽어 추가 통계의 기준일과 등급 기준을 맞춘다."""
-    rule = grade_rule(settings, repeat, regular, dormant)
+    rule = grade_rule(settings, repeat, regular, dormant, db=request.app.state.db)
     if rule["regular"] <= rule["repeat"]:
         raise HTTPException(422, "단골 기준은 재방문 기준보다 커야 합니다.")
     return stats_service.sales_insights(

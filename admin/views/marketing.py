@@ -245,7 +245,7 @@ def _render_regular_preferences(repo):
         return
     if not cards:
         # DB에 예시 회원을 넣지 않고도 발표에서 추천 동작과 문구를 보여줄 수 있게 한다.
-        cards = regular_preference_preview_cards()
+        cards = regular_preference_preview_cards(repo.customer_grade_rules()["regular"])
         sec_title("단골 손님 응대 제안", "AI가 추천할 예정인 멘트를 미리 확인해 보세요")
         st.caption("지금은 추천 예정 멘트를 예시로 보여드려요. 실제 단골 손님이 방문해 주문하면, "
                    "그 손님의 방문·주문 기록에 맞는 멘트가 표시되며 문구는 달라질 수 있어요.")

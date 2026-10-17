@@ -23,6 +23,7 @@
 | 2 | 2. 대시보드 기본 통계 | `GET /admin/api/stats/sales`, `stats/menus/ranking`, `stats/customers`, `stats/ai-recommendations` | 구현·담당 기능 테스트 완료, 실제 DB 재검증 완료 |
 | 3 | 3. 대시보드 추가 통계 | `stats/sales/hourly·trends·weekday·tickets`, `stats/tables` | 구현·담당 기능 테스트 완료, 증감률 색상·실제 DB 재검증 완료 |
 | 4 | 4. 메뉴 품절 조회 · 중복 고객 정보 제외 | `GET /admin/api/alerts` | 구현·담당 기능 테스트 완료, 실제 DB·화면 재검증 완료 |
+| 5 | 5. 고객 등급 기준 영구 저장 | `GET·PUT /admin/api/customers/grades/rules` | 미구현 (2026-10-17 추가) |
 
 **수용 담당 1~4번 모두 구현 완료 (2026-10-17)**
 
@@ -336,3 +337,30 @@ UI(대시보드 > 메뉴 > 메뉴 판매 현황) → A/views/dashboard.py render
 - 신규 서버 테스트 `BT/test_sooyong_menu_stock.py` **6 passed**, 신규 화면 테스트 `T/test_sooyong_dashboard_menu.py` **5 passed**. 기존 통계와 함께 지정 테스트는 서버 **57 passed**, 화면 **13 passed**다. 화면 테스트는 중복 제거·고객 목록 유지·실제 DB 표시·품절 해제·빈 DB·AI 주문만 있는 경우·옛 북마크·더미 모드를 검증한다.
 - 전체 서버 **150 passed, 9 skipped**, 전체 화면·통합 **108 passed, 12 skipped, 7 failed**. 실패는 이전 작업에서 원본 재현을 확인한 룰렛 7개뿐이다. 테스트를 skip·삭제하지 않았고, 요청에 따라 로컬 커밋만 진행하며 PR·push는 하지 않는다.
 - 실제 Supabase에서 읽기 전용 트랜잭션으로 `/admin/api/alerts` 200을 확인했다. DB의 품절 메뉴 ID 목록과 API가 일치하며 품절 1개·인기 품절 0개다. 기존 추가 통계 API도 모두 200이며 실제 DB 기록은 변경하지 않았다.
+
+---
+
+## 5. 고객 등급 기준 영구 저장 (신규, 미구현)
+
+**배경**: 지금은 등급 기준(재방문·단골 방문 횟수, 휴면 일수)을 서버 설정(`.env`, `core/settings.py`)에서만 읽는다. 관리자 화면에서 기준을 바꿔도 그 화면의 미리보기일 뿐 저장되지 않고, 새로고침하면 서버 기본값으로 돌아간다. Supabase `app_settings` 테이블에는 `key='grade_rule'` 행(`{"repeat":2,"regular":5,"dormant":60}`)과 이를 쓰는 `v_members_graded` 뷰가 이미 있지만 서버는 읽지 않는다.
+
+**목표**: 관리자가 정한 기준을 `app_settings`에 저장해 고객 목록·등급 집계·통계·단골 추천·문자 대상 등 모든 곳에 적용한다. 새 테이블·스키마 변경은 필요 없다.
+
+**중요 이론**
+
+| 개념 | 한 줄 설명 |
+|---|---|
+| 저장 위치 | 기존 `app_settings`의 `grade_rule` 한 행(jsonb). 새 테이블을 만들지 않는다 |
+| 기준값 우선순위 | 쿼리(미리보기) > `app_settings` > `.env` > 코드 기본값 |
+| 등급은 계산값 | 기준만 저장하고 등급은 계속 `members`의 방문 횟수·마지막 방문일에서 계산한다 |
+
+**TODO**
+
+- [ ] 5-1. `B/stores/`에 `app_settings` 읽기·쓰기를 추가한다(SQL은 stores에만). `grade_rule` 한 행을 upsert하고 `updated_at`을 갱신한다.
+- [ ] 5-2. `B/routers/admin/common.py`의 `grade_rule()`이 `app_settings` 값을 읽도록 바꾼다. 함수 모양은 유지한다(고객 목록·등급 집계·통계·단골 추천·문자 대상이 함께 쓴다).
+- [ ] 5-3. `PUT /admin/api/customers/grades/rules`를 추가한다. 단골 기준이 재방문 기준보다 커야 하며 아니면 422, 인증이 없으면 401. 기존 GET 응답 모양은 유지한다.
+- [ ] 5-4. 화면(`A/views/customers.py`, `A/admin_repository.py`)에 "기준 저장" 버튼을 추가한다. "기본값 복원"은 저장된 값 기준으로 동작하게 하고, 저장하지 않은 미리보기와 구분해 보여 준다.
+- [ ] 5-5. 휴면 기본값을 30일(1-3 합의)로 통일한다. 현재 DB 시드·`v_members_graded`는 60일, 서버 기본값은 30일이다. 시드·스키마를 고치면 `docs/DB_설계.md`도 함께 고치고 팀에 알린다.
+- [ ] 5-6. 새 테스트(본인 이름의 새 파일): 저장 후 재조회 일치, 저장 후 등급 집계 변화, 쿼리 미리보기가 저장값보다 우선, 미저장 시 `.env` 값 사용, 422·401, 미리보기가 DB를 바꾸지 않음. 기존 서버·화면 테스트도 통과해야 한다.
+
+**겹치는 지점**: `grade_rule()`을 문자 발송(성호)과 단골 추천이 함께 쓰므로 함수 이름·반환 모양을 바꾸지 않고 성호에게 알린다.

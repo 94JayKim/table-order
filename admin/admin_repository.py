@@ -136,7 +136,8 @@ class ApiBackend:
 
     def sms_candidates(self):
         """AI 문자 후보 [{keywords, grades, body, source}] 를 서버가 만들어 준다 (날씨·행사·매장 데이터 반영)."""
-        return api.post(f"{ENDPOINTS['sms']}/candidates", self.token)
+        # 서버가 날씨·행사·AI 를 차례로 부르면 기본 제한(5초)을 넘기 쉬워 이 호출만 넉넉히 기다린다
+        return api.post(f"{ENDPOINTS['sms']}/candidates", self.token, timeout=60)
 
     def sms_logs(self):
         return api.get(f"{ENDPOINTS['sms']}/logs", self.token)

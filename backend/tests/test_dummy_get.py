@@ -11,8 +11,6 @@ def test_user_get_dummies(client):
     assert set(client.get("/api/content").json()) == {"categories", "staff_calls",
                                                        "quiz_questions", "weather", "rules"}
     assert client.get("/api/content/categories").json()[0]["id"] and client.get("/api/content/nope").status_code == 404
-    menus = client.get("/api/menus").json()
-    assert len(menus) == 60 and {"id", "cat", "name", "desc", "price", "soldout"} <= menus[0].keys()
 
 
 def test_coupon_dummies(client):

@@ -15,6 +15,7 @@ def menu_categories(request: Request) -> list[dict]:
 
     TODO: categories 테이블(db/fbgrowth_schema.sql)에서 카테고리를 읽는다.
     """
+
     return [{"id": c["id"], "name": c["name"]} for c in dummy.content_item("categories")
             if c["id"] not in NON_MENU_CATEGORIES]
 

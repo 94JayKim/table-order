@@ -55,6 +55,12 @@ class TabletLoginStore:
                            (table_no, self._cutoff()))
         return [{**r, "eligible": bool(r["eligible"])} for r in rows]
 
+    def first_valid_login_at(self, table_no: int) -> str | None:
+        """주문 누적의 기준이 되는, 현재 유효한 로그인 중 가장 이른 시각을 돌려준다."""
+        row = self.db.one("SELECT MIN(logged_in_at) AS since FROM table_logins "
+                          "WHERE table_no=? AND logged_in_at>=?", (table_no, self._cutoff()))
+        return row["since"] if row else None
+
     def set_prize(self, table_no: int, member_id: int, prize: str, prize_id: int | None = None) -> int | None:
         """룰렛 결과를 기록한다. 이미 돌린 회원이면 덮어쓰지 않는다 (회원당 1회). [뼈대]
 

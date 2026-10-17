@@ -33,6 +33,7 @@ ENDPOINTS = {
     "content": "/api/content",                # {categories, staff_calls, quiz_questions, weather, rules}
     "roulette": "/api/v1/roulette/prizes",    # 관리자 설정과 같은 DB의 룰렛 칸
     "orders": "/api/orders",                  # POST
+    "table_orders": "/api/v1/tables/{table_no}/orders",  # GET
     "calls": "/api/calls",                    # POST
     "recommendations": "/api/recommendations",  # POST (추천 노출 기록)
 }
@@ -99,6 +100,9 @@ class DummyRepository:
     def create_order(self, table_no, lines, total, token, coupon_ids=()):
         return None
 
+    def table_orders(self, table_no, token):
+        return None
+
     def create_call(self, table_no, items):
         return None
 
@@ -145,6 +149,9 @@ class ApiRepository:
                              json={"table_no": table_no, "lines": lines, "total": total, "coupon_ids": list(coupon_ids)})
         return r["no"] if r else None
 
+    def table_orders(self, table_no, token):
+        return server.table_orders(token, table_no)
+
     def create_call(self, table_no, items):
         r = server.safe_call(api.post, ENDPOINTS["calls"], None, json={"table_no": table_no, "items": items})
         return r["id"] if r else None
@@ -179,6 +186,9 @@ class AutoRepository:
 
     def create_order(self, *a, **kw):
         return self._api.create_order(*a, **kw) if self.source == "api" else None
+
+    def table_orders(self, *a, **kw):
+        return self._api.table_orders(*a, **kw) if self.source == "api" else None
 
     def create_call(self, *a, **kw):
         return self._api.create_call(*a, **kw) if self.source == "api" else None

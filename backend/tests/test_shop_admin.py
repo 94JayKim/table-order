@@ -31,7 +31,6 @@ def test_admin_routes_require_token(client):
         assert client.get(path).status_code == 401
 
 
-@pytest.mark.skip(reason="로직을 지우고 더미 응답만 돌려주는 상태라 저장·검증이 일어나지 않음 - 해당 엔드포인트를 DB 로 구현하면 이 skip 을 지운다")
 def test_orders_calls_and_member_link(client):
     h = login(client, "주문자")
     line = {"id": "c1", "name": "역전 옛날통닭", "unit": 18000, "qty": 2}

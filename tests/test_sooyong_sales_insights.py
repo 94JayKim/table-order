@@ -41,13 +41,13 @@ def test_server_matches_original_screen_calculation(guest_only):
 def test_api_dashboard_ignores_dummy_orders_and_refreshes(server, monkeypatch):
     from app import dummy
 
-    # 주문 목록 API는 아직 더미여도 3번의 그래프는 DB 주문만 읽어야 한다.
+    # 주문 목록과 3번의 그래프가 모두 실제 DB 주문을 읽어야 한다.
     monkeypatch.setattr(dummy, "orders", lambda: [])
     now = datetime.now(timezone.utc)
     server.app.state.db.run("INSERT INTO orders (table_no, total, created_at) VALUES (?, ?, ?)",
                             (7, 12345, now.isoformat()))
     repo = ar.AdminRepository(ar.ApiBackend("admin-secret"))
-    assert repo.orders().empty and repo.sales_insights()["revenue"] == 12345
+    assert len(repo.orders()) == 1 and repo.sales_insights()["revenue"] == 12345
     screen = open_dashboard(monkeypatch)
     html = "\n".join(element.value for element in screen.get("html"))
     assert '오늘 매출</div><div class="v">12,345' in html

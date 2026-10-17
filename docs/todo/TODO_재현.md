@@ -19,8 +19,8 @@
 | 순서 | 할 일 | API | 상태 |
 |---|---|---|---|
 | 0 | 0. 개발 흐름 확인 (테스트 버튼) | `POST /api/dev/db-test` (개발 전용) | 확인 전 |
-| 1 | 1. 매장 정보 | `GET /api/v1/store` | 더미 (가장 쉬움, 연습용) |
-| 2 | 2. 주문 저장 · 테이블 누적 · 주문 이력 | `POST /api/v1/orders`, `GET /api/v1/tables/{id}/orders`, `GET /api/v1/owner/orders` | 더미 / 미구현 |
+| 1 | 1. 매장 정보 | `GET /api/v1/store` | 완료 |
+| 2 | 2. 주문 저장 · 테이블 누적 · 주문 이력 | `POST /api/v1/orders`, `GET /api/v1/tables/{id}/orders`, `GET /api/v1/owner/orders` | 완료 |
 | 3 | 3. 룰렛 · 쿠폰함 | `roulette/status·plays`, `tables/{n}/logins/prize`, `coupons`, `tables/{n}/coupons`, `POST /api/orders`(쿠폰 사용) | 부분 / 더미 |
 | 4 | 4. AI 질문 · 추천 · 날씨 · 규칙 | `ai/questions`, `ai/recommendations`, `weather/current`, `ai/recommendation-rules` | 더미 |
 
@@ -75,13 +75,13 @@ UI(스플래시 매장명) → U/user_repository.py _fetch_content → GET /api/
 
 **상세 설명 / TODO**
 
-- [ ] 더미 주석처리: `B/routers/store.py`의 `dummy.store()` 줄, `B/dummy/store_data.py`의 `store()`와 `ENDPOINTS`의 `"GET /api/store, /api/v1/store"` 줄.
-- [ ] 라우터에서 `request.app.state.store_info.get()`을 돌려준다(`StoreInfoStore.get`은 이미 구현돼 있음).
-- [ ] `BT/test_dummy_get.py`의 `test_user_get_dummies`에서 store 줄을 빼고, `BT/test_store_endpoint.py`로 대체됐는지 확인.
+- [x] 더미 주석처리: `B/routers/store.py`의 `dummy.store()` 줄, `B/dummy/store_data.py`의 `store()`와 `ENDPOINTS`의 `"GET /api/store, /api/v1/store"` 줄.
+- [x] 라우터에서 `request.app.state.store_info.get()`을 돌려준다(`StoreInfoStore.get`은 이미 구현돼 있음).
+- [x] `BT/test_dummy_get.py`의 `test_user_get_dummies`에서 store 줄을 빼고, `BT/test_store_endpoint.py`로 대체됐는지 확인.
 
 ---
 
-## 2. 주문 (더미 / 미구현)
+## 2. 주문 (완료)
 
 ### 2-1. `POST /api/v1/orders` (= `POST /api/orders`)
 
@@ -115,11 +115,11 @@ UI(주문 확인 다이얼로그 · 주문하기) → U/ui/dialogs.py → ctx.RE
 
 **상세 설명 / TODO**
 
-- [ ] 더미 주석처리: `create_order`의 `dummy.order_created(...)` 줄, `B/dummy/order_data.py`의 `order_created`와 `"POST /api/orders"` 줄.
-- [ ] `B/stores/shop_orders.py`의 `add_order`, `order`, `orders` 구현(파일 안 TODO 주석 그대로). `menus`에 있는 id만 `menu_id`로 연결, 없으면 null.
-- [ ] 라우터 TODO대로 `shop.add_order(table_no, lines, total, member_id)` 호출.
-- [ ] 주의: `ShopStore`가 메뉴를 쓰려면 서준의 `seed_menus()`가 필요하다. 서준 작업 전에는 `menu_id`를 null로 두고 테스트한다.
-- [ ] 화면 변경은 필요 없다(응답 `{no, ai_combo, used_coupon_ids}` 모양 유지).
+- [x] 더미 주석처리: `create_order`의 `dummy.order_created(...)` 줄, `B/dummy/order_data.py`의 `order_created`와 `"POST /api/orders"` 줄.
+- [x] `B/stores/shop_orders.py`의 `add_order`, `order`, `orders` 구현(파일 안 TODO 주석 그대로). `menus`에 있는 id만 `menu_id`로 연결, 없으면 null.
+- [x] 라우터 TODO대로 `shop.add_order(table_no, lines, total, member_id)` 호출.
+- [x] 주의: `ShopStore`가 메뉴를 쓰려면 서준의 `seed_menus()`가 필요하다. 서준 작업 전에는 `menu_id`를 null로 두고 테스트한다.
+- [x] 화면 변경은 필요 없다(응답 `{no, ai_combo, used_coupon_ids}` 모양 유지).
 
 ### 2-2. `GET /api/v1/tables/{tableId}/orders` (미구현)
 
@@ -138,10 +138,10 @@ UI(🧾 주문내역 버튼) → U/ui/dialogs.py → (새) server.table_orders �
 
 **상세 설명 / TODO**
 
-- [ ] `B/stores/shop_orders.py`에 `table_orders(table_no, since)` 추가, `B/stores/tablet_logins.py`에 기준 시각 조회 함수 추가(둘 다 재현 파일).
-- [ ] 화면: 지금 주문내역은 세션(`ss.orders`)에서 그린다. 서버 값으로 바꿀 때 `U/user_repository.py`에는 새 메서드만 추가한다.
+- [x] `B/stores/shop_orders.py`에 `table_orders(table_no, since)` 추가, `B/stores/tablet_logins.py`에 기준 시각 조회 함수 추가(둘 다 재현 파일).
+- [x] 화면: 지금 주문내역은 세션(`ss.orders`)에서 그린다. 서버 값으로 바꿀 때 `U/user_repository.py`에는 새 메서드만 추가한다.
 
-### 2-3. `GET /api/v1/owner/orders` (더미 · 관리자 주문 이력)
+### 2-3. `GET /api/v1/owner/orders` (관리자 주문 이력)
 
 **목표**: 관리자 > 주문 이력의 전체 주문·고객별 주문을 DB에서 읽는다. `member_id` 필터를 지원한다. 기간·테이블·금액·AI 사용 필터는 현재처럼 화면(`A/order_filters.py`)에서 처리한다.
 
@@ -158,8 +158,8 @@ UI(주문 이력 탭) → A/views/orders.py → repo.orders() (A/admin_repositor
 
 **상세 설명 / TODO**
 
-- [ ] 더미 주석처리: `B/routers/admin/orders.py`의 `dummy.orders()`/`dummy.members()` 사용부, `B/dummy/order_data.py`의 `orders`·`members`(수용의 통계 더미가 `members`를 쓰므로 수용과 순서를 맞춘다)와 `"GET /admin/api/orders"` 줄.
-- [ ] 응답 모양은 `dummy.orders()`와 같게 유지(키: `id, table_no, member_id, total, roulette_discount_percent, ai_combo, recommendation_event_id, ts, lines`).
+- [x] 더미 주석처리: `B/routers/admin/orders.py`의 `dummy.orders()`/`dummy.members()` 사용부, `B/dummy/order_data.py`의 `orders`·`members`(수용의 통계 더미가 `members`를 쓰므로 수용과 순서를 맞춘다)와 `"GET /admin/api/orders"` 줄.
+- [x] 응답 모양은 `dummy.orders()`와 같게 유지(키: `id, table_no, member_id, total, roulette_discount_percent, ai_combo, recommendation_event_id, ts, lines`).
 
 ---
 

@@ -79,6 +79,11 @@ def table_coupons(token: str, table_no: int):
     return safe_call(api.get, f"/api/tables/{table_no}/coupons", token)
 
 
+def table_orders(token: str | None, table_no: int):
+    """현재 테이블의 유효한 로그인 이후 주문과 누적 금액을 읽는다."""
+    return safe_call(api.get, f"/api/v1/tables/{table_no}/orders", token)
+
+
 DEV_NICKNAME = "개발테스트"  # APP_ENV=dev 자동 로그인에 쓰는 모의 카카오 회원 닉네임
 
 

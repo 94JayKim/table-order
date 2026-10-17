@@ -37,7 +37,7 @@ def _visit_greeting(member: dict, history: dict, today: date, delivery: str,
         suggestions = (
             "벌써 여러 번 찾아주셨네요. 계속 찾아주셔서 감사합니다! 오늘도 편하게 즐기세요.",
             f"또 찾아주셔서 감사합니다. 오늘 주문하신 {delivery}도 맛있게 드세요!",
-            "다시 뵈어 반갑습니다. 자주 찾아주시는 만큼 오늘도 정성껏 준비해 드릴게요!",
+            "다시 뵈어 반갑습니다. 자주 찾아주셔서 감사합니다. 오늘도 맛있게 드세요!",
         )
     elif member["visit_count"] >= 10:
         suggestions = (
@@ -86,7 +86,7 @@ def regular_notes(members: list[dict], orders: list[dict], lines: list[dict],
     result = []
     for member in members:
         # 오래 방문하지 않은 손님은 휴면 추천에서 다루고, 현재 단골 고객만 알린다.
-        if member["visit_count"] < 5 or grade_of(member, today, regular=regular_visits, dormant=dormant_days) != "단골":
+        if grade_of(member, today, regular=regular_visits, dormant=dormant_days) != "단골":
             continue
         history, current = defaultdict(set), []
         for order in by_member[member["id"]]:

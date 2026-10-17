@@ -101,6 +101,10 @@ class ApiBackend:
         """서버에 설정된 기본 등급 기준을 조회한다."""
         return api.get("/admin/api/customers/grades/rules", self.token)
 
+    def save_customer_grade_rules(self, rule):
+        """화면 미리보기와 구분해서 관리자가 저장을 누를 때만 요청한다."""
+        return api.put("/admin/api/customers/grades/rules", self.token, json=rule)
+
     def orders(self):
         return api.get(ENDPOINTS["orders"], self.token)
 
@@ -394,8 +398,14 @@ class AdminRepository:
         """더미·API 여부와 관계없이 현재 기본 기준을 가져온다."""
         return self.backend.customer_grade_rules()
 
+    def save_customer_grade_rules(self, rule: dict) -> dict:
+        """더미 화면에서 실제 DB에 저장됐다고 오해하지 않도록 막는다."""
+        if self.source != "api":
+            raise Unsupported("기준 저장은 서버에 연결한 화면에서 사용할 수 있어요.")
+        return self.backend.save_customer_grade_rules(rule)
+
     def members(self, rule: dict | None = None) -> pd.DataFrame:
-        rows = self.backend.members(rule or DEFAULT_RULE)["members"]
+        rows = self.backend.members(rule if rule is not None else self.customer_grade_rules())["members"]
         return pd.DataFrame([{
             "customer_id": m["id"], "닉네임": m["nickname"], "성별": m["gender"], "연령대": m["age_group"],
             "방문 횟수": m["visit_count"], "마지막 방문일": _kst_date(m["last_visit_at"]),
@@ -412,12 +422,12 @@ class AdminRepository:
             columns=["order_id", "주문 시각", "customer_id", "닉네임", "테이블", "주문 내역", "금액", "AI 추천 사용"])
 
     def stats(self, rule: dict | None = None) -> dict:
-        return self.backend.stats(rule or DEFAULT_RULE)
+        return self.backend.stats(rule if rule is not None else self.customer_grade_rules())
 
     def sales_insights(self, rule: dict | None = None) -> dict:
         """실제 서버의 추가 통계를 읽고, 더미 모드에서는 기존 화면 계산을 유지한다."""
         if self.source == "api":
-            return self.backend.sales_insights(rule or DEFAULT_RULE)
+            return self.backend.sales_insights(rule if rule is not None else self.customer_grade_rules())
         from dashboard_stats import summarize
 
         return summarize(self.orders(), self.members(rule), tables=self.store()["tables"])

@@ -68,12 +68,12 @@ def recommend(ctx: dict) -> list[dict]:
     return cards or [dict(EMPTY_RECOMMENDATION)]
 
 
-def regular_preference_preview_cards() -> list[dict]:
+def regular_preference_preview_cards(regular_visits: int = 5) -> list[dict]:
     """손님이 아직 없어도 추천 예정 문구를 설명한다. 실제 고객·주문처럼 꾸미지 않는다."""
     return [
         {
             "title": "단골 손님께 AI가 이런 인사를 추천할 예정이에요",
-            "why": "5회 이상 방문한 단골 손님이 주문하면, 메뉴 취향과 관계없이 방문 횟수와 "
+            "why": f"{regular_visits}회 이상 방문한 단골 손님이 주문하면, 메뉴 취향과 관계없이 방문 횟수와 "
                    "오늘 주문에 맞는 감사 인사를 추천할 예정이에요.",
             "action": "추천 예정 멘트 예시\n"
                       "“또 찾아주셔서 감사합니다. 오늘도 편하게 즐기다 가세요!”\n"
@@ -84,7 +84,7 @@ def regular_preference_preview_cards() -> list[dict]:
             "why": "이전 주문에서 같은 메뉴를 80% 이상 고른 기록이 확인되면, "
                    "취향을 기억하는 인사를 한 건 더 제안할 예정이에요.",
             "action": "추천 예정 멘트 예시\n"
-                      "“자주 드시던 메뉴, 오늘도 맛있게 준비해 드릴게요!”",
+                      "“자주 드시던 메뉴 나왔습니다. 오늘도 맛있게 드세요!”",
         },
     ]
 

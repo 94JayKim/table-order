@@ -44,7 +44,7 @@ KST = timezone(timedelta(hours=9))
 SPICY_LABELS = {0: "안 매움", 1: "순한맛", 2: "보통맛", 3: "아주 매움"}
 SPICY_VALUES = {v: k for k, v in SPICY_LABELS.items()}
 MODES = ("dummy", "api", "auto")
-DEFAULT_RULE = {"repeat": 2, "regular": 5, "dormant": 60}
+DEFAULT_RULE = {"repeat": 2, "regular": 5, "dormant": 30}
 MENU_COLUMNS = ["id", "메뉴명", "카테고리", "가격", "설명", "이미지 URL", "판매 여부", "매운 정도", "추천 가중치", "세트 가능"]
 
 
@@ -93,11 +93,28 @@ class ApiBackend:
     def members(self, rule):
         return api.get(ENDPOINTS["members"], self.token, params=rule)
 
+    def customer_grades(self, rule):
+        """고객 등급 카드와 대시보드가 함께 쓰는 서버 집계 결과."""
+        return api.get("/admin/api/customers/grades", self.token, params=rule)
+
+    def customer_grade_rules(self):
+        """서버에 설정된 기본 등급 기준을 조회한다."""
+        return api.get("/admin/api/customers/grades/rules", self.token)
+
     def orders(self):
         return api.get(ENDPOINTS["orders"], self.token)
 
     def stats(self, rule):
-        return api.get(ENDPOINTS["stats"], self.token)
+        # 미리 본 등급 기준을 오늘 신규·재방문 집계에도 적용한다.
+        return api.get(ENDPOINTS["stats"], self.token, params=rule)
+
+    def sales_insights(self, rule):
+        """추가 통계 전체를 한 번에 읽어 그래프마다 주문을 다시 조회하지 않는다."""
+        return api.get(f"{ENDPOINTS['stats']}/insights", self.token, params=rule)
+
+    def menu_alerts(self):
+        """품절 상태와 인기 메뉴 여부를 실제 DB에서 조회한다."""
+        return api.get("/admin/api/alerts", self.token)
 
     def calls(self):
         return api.get(ENDPOINTS["calls"], self.token)
@@ -361,6 +378,21 @@ class AdminRepository:
         self.backend.save_roulette_prizes(prizes)
 
     # ---- 고객 / 주문 / 통계 ----
+    def regular_preferences(self) -> list[dict]:
+        """마케팅 AI 추천에서 쓸 실제 DB의 오늘 주문한 단골 정보를 읽는다."""
+        # 더미 화면에서 실제 손님의 취향을 알고 있는 것처럼 꾸며 보여주지 않는다.
+        if self.source != "api":
+            return []
+        return api.get("/admin/api/marketing/regular-preferences", self.backend.token)["preferences"]
+
+    def customer_grades(self, rule: dict | None = None) -> dict:
+        """화면에서 다시 세지 않고 백엔드가 집계한 등급별 인원을 사용한다."""
+        return self.backend.customer_grades(rule if rule is not None else self.customer_grade_rules())
+
+    def customer_grade_rules(self) -> dict:
+        """더미·API 여부와 관계없이 현재 기본 기준을 가져온다."""
+        return self.backend.customer_grade_rules()
+
     def members(self, rule: dict | None = None) -> pd.DataFrame:
         rows = self.backend.members(rule or DEFAULT_RULE)["members"]
         return pd.DataFrame([{
@@ -380,6 +412,24 @@ class AdminRepository:
 
     def stats(self, rule: dict | None = None) -> dict:
         return self.backend.stats(rule or DEFAULT_RULE)
+
+    def sales_insights(self, rule: dict | None = None) -> dict:
+        """실제 서버의 추가 통계를 읽고, 더미 모드에서는 기존 화면 계산을 유지한다."""
+        if self.source == "api":
+            return self.backend.sales_insights(rule or DEFAULT_RULE)
+        from dashboard_stats import summarize
+
+        return summarize(self.orders(), self.members(rule), tables=self.store()["tables"])
+
+    def menu_alerts(self) -> dict:
+        """API 모드는 DB 품절 알림을, 더미 모드는 기존 시연용 메뉴를 표시한다."""
+        if self.source == "api":
+            alerts = self.backend.menu_alerts()
+            return {"sold_out": [alert["name"] for alert in alerts],
+                    "popular_sold_out": [alert["name"] for alert in alerts if alert["popular"]]}
+        from dashboard_stats import menu_alerts
+
+        return menu_alerts(self.menus(), self.stats()["popular_menus"])
 
     # ---- 직원 호출 ----
     def calls(self) -> list[dict]:

@@ -10,6 +10,7 @@ import admin_repository as repo_mod
 import marketing_ai
 from admin.marketing.config import RECOMMENDATION_PAGE_SIZE
 from admin.marketing.recommendations import pick_recommendations as pick_recommendation_page
+from admin.marketing.recommendations import regular_preference_cards
 from admin.ui.widgets import kpi, page_head, sec_title
 from admin_dummy_data import Unsupported
 from admin_repository import GRADES
@@ -229,6 +230,24 @@ def pick_recommendations(recs, round_no):
     return pick_recommendation_page(recs, round_no)
 
 
+def _render_regular_preferences(repo):
+    """기존 AI 추천 아래에 오늘 주문한 단골의 방문·메뉴 정보를 추가한다."""
+    try:
+        cards = regular_preference_cards(repo.regular_preferences())
+    except (repo_mod.api.ApiError, repo_mod.api.ApiUnavailable):
+        # 추가 정보 조회가 실패해도 기존 추천 카드·재추천 버튼은 그대로 사용할 수 있다.
+        st.info("단골 손님 정보를 불러오지 못했어요. 잠시 후 재추천을 눌러 주세요.")
+        return
+    if not cards:
+        return
+    sec_title("단골 손님 응대 제안", "주문이 확인된 손님에게 메뉴를 건넬 때 참고해 주세요")
+    # 한 안내 안에서 손님별 제안을 읽기 쉽도록 줄바꿈하며, DB 텍스트는 먼저 이스케이프한다.
+    body = "".join(f'<div class="rec" style="grid-column:1 / -1"><div class="rt">{escape(card["title"])}</div>'
+                   f'<div class="rw">{escape(card["why"])}</div>'
+                   f'<div class="ra">{escape(card["action"]).replace(chr(10), "<br>")}</div></div>' for card in cards)
+    st.html(f'<div class="recs regular-preferences">{body}</div>')
+
+
 def marketing_recommend_tab(repo):
     ctx = marketing_ai.build_context(repo, ss["grade_rule"])
     sec_title("사장님을 위한 마케팅 추천", "매장의 모든 데이터를 바탕으로 정리했어요")
@@ -249,6 +268,8 @@ def marketing_recommend_tab(repo):
                  help="다른 마케팅 방법을 추천받아요")
     c_note.caption(f"추천 {page}/{pages} · 눌러서 다른 마케팅 방법을 추천받아요" if pages > 1
                    else "지금은 추천할 방법이 이것뿐이에요. 데이터가 쌓이면 더 다양해져요.")
+    # 원래의 추천 4개·재추천 순환을 마친 뒤, 별도 영역을 덧붙인다.
+    _render_regular_preferences(repo)
 
 
 def marketing_chatbot_tab(repo):

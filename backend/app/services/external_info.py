@@ -62,7 +62,20 @@ class ExternalInfoService:
         except (httpx.HTTPError, KeyError, ValueError, TypeError):
             return ""
         # 요청 날짜 필터를 믿지 않고 한 번 더 거른다: 우리 자치구 + 오늘이 시작일~종료일 사이
-        titles = [row["TITLE"].strip() for row in rows
-                  if row.get("GUNAME") == self.s.store_gu
-                  and str(row.get("STRTDATE", ""))[:10] <= day <= str(row.get("END_DATE", ""))[:10]]
-        return f"{self.s.store_gu} '{', '.join(titles[:2])}' 행사 진행 중" if titles else ""
+        today = [row for row in rows
+                 if row.get("GUNAME") == self.s.store_gu
+                 and str(row.get("STRTDATE", ""))[:10] <= day <= str(row.get("END_DATE", ""))[:10]]
+        if not today:
+            return ""
+        # 문자에 구체적인 행사명이 들어가도록 "'행사명'(장소, 10/17~10/20)" 형태로 최대 2개를 적는다
+        return f"{self.s.store_gu} " + ", ".join(self._event_label(row) for row in today[:2]) + " 행사 진행 중"
+
+    @staticmethod
+    def _event_label(row: dict) -> str:
+        """행사 한 건을 "'행사명'(장소, 10/17~10/20)" 로 만든다. 장소·날짜가 없으면 그 부분은 뺀다."""
+        def md(value) -> str:  # "2026-10-17 00:00:00.0" → "10/17"
+            text = str(value or "")[:10]
+            return f"{int(text[5:7])}/{int(text[8:10])}" if len(text) == 10 else ""
+        start, end = md(row.get("STRTDATE")), md(row.get("END_DATE"))
+        details = [d for d in (str(row.get("PLACE") or "").strip(), f"{start}~{end}" if start and end else "") if d]
+        return f"'{row['TITLE'].strip()}'" + (f"({', '.join(details)})" if details else "")

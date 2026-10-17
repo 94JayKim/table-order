@@ -49,7 +49,7 @@ def test_rules_use_server_configuration_and_preview_never_writes(grade_client):
     assert response.json() == {**EXPECTED, "재방문": 2, "단골": 0}
     assert grade_client.app.state.members.all() == before
     assert grade_client.get(f"{BASE}/grades/rules", headers=ADMIN).json() == {
-        "repeat": 2, "regular": 5, "dormant": 60,
+        "repeat": 2, "regular": 5, "dormant": 30,
     }
     assert grade_client.get(f"{BASE}/grades", headers=ADMIN).json() == EXPECTED
 

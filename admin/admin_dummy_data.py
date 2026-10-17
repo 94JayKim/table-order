@@ -165,7 +165,7 @@ class DummyBackend:
 
     def customer_grade_rules(self) -> dict:
         """더미 모드에서 사용하는 기본 등급 기준. 서버 설정을 읽거나 저장하지 않는다."""
-        return {"repeat": 2, "regular": 5, "dormant": 60}
+        return {"repeat": 2, "regular": 5, "dormant": 30}
 
     def members(self, rule: dict) -> dict:
         return {"rule": rule, "members": [{
@@ -218,7 +218,7 @@ class DummyBackend:
     SMS_LIMIT = {"SMS": 100, "LMS": 20}
     STORE_NAME = "역전할머니맥주"
     OPT_OUT_NUMBER = "080-000-0000"
-    GRADE_RULE = {"repeat": 2, "regular": 5, "dormant": 60}
+    GRADE_RULE = {"repeat": 2, "regular": 5, "dormant": 30}
 
     def _seed_sms_logs(self):
         """화면이 비어 보이지 않도록 이번 달 발송 기록 몇 건을 미리 넣어 둔다."""

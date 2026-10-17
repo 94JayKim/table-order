@@ -46,8 +46,9 @@ def page_customers(repo, sub="고객 목록"):
     """고객 목록 / 등급 분류 기준은 사이드바 하위 메뉴에서 고른다 (admin/app.py 의 SUBPAGES)."""
     page_head("고객 등급", "방문 이력으로 고객을 신규·재방문·단골·휴면으로 나눠요")
     defaults = repo.customer_grade_rules()
-    if "customer_rule_defaults" not in ss or ss.get("customer_rule_source") != repo.source:
-        # 처음 열거나 데이터 소스가 바뀔 때만 초기화해 사용자의 미리보기 값은 유지한다.
+    if ("customer_rule_defaults" not in ss or ss.get("customer_rule_source") != repo.source
+            or ss["customer_rule_defaults"] != defaults):
+        # 서버의 기본 기준이 바뀐 경우에도 새 정책을 반영하고, 그 외에는 미리보기를 유지한다.
         ss["customer_rule_defaults"] = dict(defaults)
         ss["customer_rule_source"] = repo.source
         reset_rule()

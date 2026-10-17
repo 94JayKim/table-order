@@ -13,7 +13,7 @@ def to_kst_date(iso: str | None) -> date | None:
     return datetime.fromisoformat(iso).astimezone(KST).date()
 
 
-def grade_of(member: dict, today: date, repeat: int = 2, regular: int = 5, dormant: int = 60) -> str:
+def grade_of(member: dict, today: date, repeat: int = 2, regular: int = 5, dormant: int = 30) -> str:
     last = to_kst_date(member.get("last_visit_at"))
     if last and (today - last).days >= dormant:
         return "휴면"

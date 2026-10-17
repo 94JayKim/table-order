@@ -44,7 +44,7 @@ KST = timezone(timedelta(hours=9))
 SPICY_LABELS = {0: "안 매움", 1: "순한맛", 2: "보통맛", 3: "아주 매움"}
 SPICY_VALUES = {v: k for k, v in SPICY_LABELS.items()}
 MODES = ("dummy", "api", "auto")
-DEFAULT_RULE = {"repeat": 2, "regular": 5, "dormant": 60}
+DEFAULT_RULE = {"repeat": 2, "regular": 5, "dormant": 30}
 MENU_COLUMNS = ["id", "메뉴명", "카테고리", "가격", "설명", "이미지 URL", "판매 여부", "매운 정도", "추천 가중치", "세트 가능"]
 
 
@@ -378,6 +378,13 @@ class AdminRepository:
         self.backend.save_roulette_prizes(prizes)
 
     # ---- 고객 / 주문 / 통계 ----
+    def regular_preferences(self) -> list[dict]:
+        """마케팅 AI 추천에서 쓸 실제 DB의 오늘 주문한 단골 정보를 읽는다."""
+        # 더미 화면에서 실제 손님의 취향을 알고 있는 것처럼 꾸며 보여주지 않는다.
+        if self.source != "api":
+            return []
+        return api.get("/admin/api/marketing/regular-preferences", self.backend.token)["preferences"]
+
     def customer_grades(self, rule: dict | None = None) -> dict:
         """화면에서 다시 세지 않고 백엔드가 집계한 등급별 인원을 사용한다."""
         return self.backend.customer_grades(rule if rule is not None else self.customer_grade_rules())

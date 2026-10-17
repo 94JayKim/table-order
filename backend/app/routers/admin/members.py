@@ -54,3 +54,17 @@ async def customer_grade_rules(settings: Settings = Depends(get_settings)):
 # 새 고객 경로에서도 기존 함수를 그대로 사용해 목록·수신거부 응답 계약을 유지한다.
 router.add_api_route("/customers", list_members, methods=["GET"])
 router.add_api_route("/customers/{member_id}/opt-out", member_opt_out, methods=["POST"])
+
+
+@router.get("/marketing/regular-preferences")
+async def regular_preferences(request: Request, settings: Settings = Depends(get_settings)):
+    """오늘 주문한 단골의 방문 기록과 확인 가능한 메뉴 선호도를 조회한다."""
+    from app.services.customer_notes import regular_notes
+    from app.stores.customer_notes import CustomerNotesStore
+
+    # 기존 고객 목록 응답은 유지하고 마케팅 화면에서만 선호도 조회를 사용한다.
+    store = CustomerNotesStore(request.app.state.db)
+    notes = regular_notes(request.app.state.members.all(), store.orders(), store.lines(), store.menus(),
+                          datetime.now(KST).date(), dormant_days=settings.grade_dormant_days,
+                          regular_visits=settings.grade_regular_visits)
+    return {"preferences": notes}

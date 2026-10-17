@@ -68,6 +68,28 @@ def recommend(ctx: dict) -> list[dict]:
     return cards or [dict(EMPTY_RECOMMENDATION)]
 
 
+def regular_preference_cards(preferences: list[dict]) -> list[dict]:
+    """오늘 주문한 단골을 모두 안내하고, 확인된 사실과 선택 가능한 멘트를 함께 보여준다."""
+    # 예시 고객 수와 실제 표시 인원은 무관하다. 조건을 충족한 손님은 모두 표시한다.
+    chosen = [preference for preference in preferences
+              if preference.get("delivery_menu") and preference.get("today_table") is not None]
+    if not chosen:
+        return []
+    suggestions = [
+        f"{index}. {preference['today_table']}번 테이블 · {preference['nickname']}님께 "
+        f"{preference['delivery_menu']} 메뉴를 드릴 때\n{preference['context']}\n"
+        f"멘트 예시: “{preference['note']}”"
+        for index, preference in enumerate(chosen, 1)
+    ]
+    return [{
+        "title": "오늘은 이런 멘트 어떠세요?",
+        "why": "오늘 주문이 확인된 단골 손님의 방문 기록을 알려드려요. "
+               "같은 안주 주문율이 80% 이상이면 메뉴 취향도 함께 안내합니다. "
+               "메뉴를 건넬 때 반갑게 인사해 보세요. 문구는 사장님 말투에 맞게 바꾸셔도 좋아요.",
+        "action": "\n\n".join(suggestions),
+    }]
+
+
 def pick_recommendations(cards: list[dict], round_no: int) -> tuple[list[dict], int, int]:
     """round_no에 해당하는 네 장을 고르고 마지막 묶음은 앞 카드로 채운다."""
     pages = max(1, -(-len(cards) // RECOMMENDATION_PAGE_SIZE))

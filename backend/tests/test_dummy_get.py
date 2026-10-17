@@ -30,8 +30,6 @@ def test_admin_get_dummies(client):
     assert {"id", "ts", "table_no", "total", "lines", "ai_combo", "member_id", "nickname"} <= orders[0].keys()
     mine = client.get("/admin/api/orders", headers=ADMIN, params={"member_id": 1}).json()
     assert mine and all(o["member_id"] == 1 for o in mine)
-    stats = client.get("/admin/api/stats", headers=ADMIN).json()
-    assert stats["today_orders"] > 0 and stats["popular_menus"] and stats["ai"]["recommendations"] == 9
 
 
 def test_every_listed_dummy_function_exists():

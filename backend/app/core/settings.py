@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # 고객 등급 기준 (임시값, 정책 확정 후 조정)
     grade_repeat_visits: int = 2
     grade_regular_visits: int = 5
-    grade_dormant_days: int = 60
+    grade_dormant_days: int = 30  # 휴면: 마지막 방문 후 30일 이상
 
     # QR 로그인 / 카카오 (docs/정식_구현_계획.md 1장)
     public_base_url: str = "http://localhost:8000"  # 휴대폰이 접속할 서버 주소 (QR에 들어감)

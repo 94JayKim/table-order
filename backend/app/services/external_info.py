@@ -5,6 +5,7 @@
 외부 호출이 실패해도 예외를 밖으로 내보내지 않고 빈 문자열을 돌려준다(문자 후보 생성이 멈추지 않게).
 """
 
+import re
 from datetime import datetime
 
 import httpx
@@ -52,7 +53,7 @@ class ExternalInfoService:
             return ""
 
     def fetch_events(self, day: str) -> str:
-        """매장 자치구에서 오늘 열리는 문화행사 최대 2개를 한 줄로. 키가 없거나 실패하면 ''."""
+        """매장 자치구에서 오늘 열리는 문화행사 하나를 짧은 한 줄로. 키가 없거나 실패하면 ''."""
         if not self.s.seoul_openapi_key:
             return ""
         try:
@@ -62,7 +63,32 @@ class ExternalInfoService:
         except (httpx.HTTPError, KeyError, ValueError, TypeError):
             return ""
         # 요청 날짜 필터를 믿지 않고 한 번 더 거른다: 우리 자치구 + 오늘이 시작일~종료일 사이
-        titles = [row["TITLE"].strip() for row in rows
-                  if row.get("GUNAME") == self.s.store_gu
-                  and str(row.get("STRTDATE", ""))[:10] <= day <= str(row.get("END_DATE", ""))[:10]]
-        return f"{self.s.store_gu} '{', '.join(titles[:2])}' 행사 진행 중" if titles else ""
+        today = [row for row in rows
+                 if row.get("GUNAME") == self.s.store_gu
+                 and str(row.get("STRTDATE", ""))[:10] <= day <= str(row.get("END_DATE", ""))[:10]]
+        if not today:
+            return ""
+        # 문자에는 행사 하나만 짧게 넣는다: 이름을 다듬었을 때 가장 짧은(읽기 쉬운) 행사를 고른다
+        row = min(today, key=lambda r: len(self._short_title(r.get("TITLE", ""))))
+        return self._event_label(row, day)
+
+    @staticmethod
+    def _short_title(title: str) -> str:
+        """행사명을 문자에 넣기 좋게 줄인다.
+        "[마포문화재단] 2026 [인디스커버리 : FESTA] TRACK 02" → "인디스커버리 FESTA TRACK 02",
+        "포개진 지도 - 미시적이지만 거시적인 풍경" → "포개진 지도"."""
+        text = re.sub(r"^\s*[\[(][^\])]*[\])]\s*", "", title)  # 맨 앞 [주최 기관] 은 뺀다
+        text = re.sub(r"[\[\]()]", " ", text)                 # 나머지 괄호는 기호만 지운다
+        text = re.split(r"\s+-\s+|\s*[|~]\s*", text)[0]       # " - " 뒤 부제는 버린다
+        text = re.sub(r"\s*:\s*", " ", text)
+        text = re.sub(r"^(19|20)\d{2}\s+", "", text.strip())  # 앞의 연도("2026 ")는 뺀다
+        text = re.sub(r"\s+", " ", text).strip()
+        return text if len(text) <= 24 else text[:24].rstrip() + "…"
+
+    @classmethod
+    def _event_label(cls, row: dict, day: str) -> str:
+        """행사 한 건을 "장소의 '행사명'(10/23까지)" 로 만든다. 장소가 없으면 빼고, 오늘 끝나면 "오늘까지"."""
+        end = str(row.get("END_DATE") or "")[:10]
+        until = "오늘까지" if end == day else (f"{int(end[5:7])}/{int(end[8:10])}까지" if len(end) == 10 else "")
+        place = str(row.get("PLACE") or "").strip()
+        return (f"{place}의 " if place else "") + f"'{cls._short_title(row['TITLE'])}'" + (f"({until})" if until else "")

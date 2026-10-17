@@ -90,10 +90,63 @@ def test_fetch_events_filters_by_gu_and_date(monkeypatch):
     monkeypatch.setattr(httpx, "get", fake_get)
     with TestClient(create_app(settings(seoul_openapi_key="KEY"))) as c:
         text = c.app.state.external.fetch_events("2026-10-17")
-        assert text == "마포구 '마포 공연' 행사 진행 중"
+        assert text == "'마포 공연'(10/30까지)"  # 장소가 없으면 이름과 종료일만
         assert seen["url"] == EVENT_URL.format(key="KEY", day="2026-10-17")
         c.app.state.external.s.seoul_openapi_key = ""
         assert c.app.state.external.fetch_events("2026-10-17") == ""  # 키가 없으면 호출 없이 빈 값
+
+
+def test_event_text_is_one_short_event(monkeypatch):
+    """행사는 하나만, 주최 기관·연도·부제를 뺀 짧은 이름으로 넣는다 (실제 받은 행사명으로 확인)."""
+    rows = [{"TITLE": "[마포문화재단] 2026 [인디스커버리 : FESTA] TRACK 02", "PLACE": "마포아트센터 아트홀맥",
+             "GUNAME": "마포구", "STRTDATE": "2026-10-17 00:00:00.0", "END_DATE": "2026-10-17 00:00:00.0"},
+            {"TITLE": "포개진 지도 - 미시적이지만 거시적인 풍경", "PLACE": "갤러리 지하",
+             "GUNAME": "마포구", "STRTDATE": "2026-10-17 00:00:00.0", "END_DATE": "2026-10-23 00:00:00.0"}]
+    monkeypatch.setattr(httpx, "get", lambda url, **kw: httpx.Response(
+        200, json={"culturalEventInfo": {"row": rows}}, request=httpx.Request("GET", url)))
+    with TestClient(create_app(settings(seoul_openapi_key="KEY"))) as c:
+        ext = c.app.state.external
+        assert ext.fetch_events("2026-10-17") == "갤러리 지하의 '포개진 지도'(10/23까지)"
+        assert ext._short_title(rows[0]["TITLE"]) == "인디스커버리 FESTA TRACK 02"
+        assert ext._event_label(rows[0], "2026-10-17") == "마포아트센터 아트홀맥의 '인디스커버리 FESTA TRACK 02'(오늘까지)"
+
+
+def test_template_is_clean_without_repeats():
+    with TestClient(create_app(settings(), sms_clock=at(14))) as c:
+        fake_external(c, event="갤러리 지하의 '포개진 지도'(10/23까지)")
+        member(c, "가")
+        bodies = {tuple(x["keywords"]): x["body"] for x in c.post(CANDIDATES, headers=ADMIN).json()}
+        both = bodies[("날씨", "행사")]
+        assert "맑은 18도" in both and "'포개진 지도'" in both
+        assert both.count("기다릴게요") == 1 and "어때요" not in both and "인기 메뉴" not in "".join(bodies.values())
+
+
+def test_candidates_skip_keywords_without_info():
+    """날씨·행사 정보가 비면 그 키워드가 든 후보는 만들지 않는다 (지어낸 듯한 문구 방지)."""
+    with TestClient(create_app(settings(), sms_clock=at(14))) as c:
+        fake_external(c, weather="", event="")
+        member(c, "가")
+        kws = [set(x["keywords"]) for x in c.post(CANDIDATES, headers=ADMIN).json()]
+        assert kws and not any(k & {"날씨", "행사"} for k in kws)
+
+
+def test_ai_prompt_has_only_keyword_facts(monkeypatch):
+    """AI 에는 키워드에 해당하는 사실만 넘긴다: 행사 키워드엔 행사명, 가중치엔 메뉴 특징, 가격은 넘기지 않는다."""
+    sent = []
+
+    def fake_post(url, **kw):
+        sent.append(kw["json"]["contents"][0]["parts"][0]["text"])
+        body = {"candidates": [{"content": {"parts": [{"text": "문구"}]}}]}
+        return httpx.Response(200, json=body, request=httpx.Request("POST", url))
+    monkeypatch.setattr(httpx, "post", fake_post)
+    with TestClient(create_app(settings(gemini_api_key="k"), sms_clock=at(14))) as c:
+        fake_external(c, event="갤러리 지하의 '포개진 지도'(10/23까지)")
+        member(c, "가")
+        c.post(CANDIDATES, headers=ADMIN)
+        by_kw = {p.split("키워드: ")[1].split("\n")[0]: p for p in sent}
+        assert "'포개진 지도'" in by_kw["행사"] and "날씨" not in by_kw["행사"].split("키워드")[1]
+        assert " - " in by_kw["가중치, 주문"] and "원 " not in "".join(sent)
+        assert "포개진 지도" not in by_kw["주문"]
 
 
 def test_candidate_routes_require_admin():

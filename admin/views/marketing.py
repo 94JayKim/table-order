@@ -23,8 +23,13 @@ STATUS_LABEL = {"sent": ("발송됨", "ok"), "dry_run": ("테스트(DRY RUN)", "
 
 def make_ai_candidates(repo):
     """[AI 문자 생성]: 수신자와 문구를 내부적으로 만들어 후보 버튼으로 보여 준다."""
-    ctx = marketing_ai.build_context(repo, ss["grade_rule"])
-    ss["ai_candidates"] = marketing_ai.suggest_candidates(ctx, *marketing_ai.external_context())
+    if repo.source == "api":
+        # 서버가 매장 데이터·오늘 날씨/행사를 반영해 후보를 만든다 (AI 키가 없으면 템플릿)
+        ss["ai_candidates"] = repo.sms_candidates()
+    else:
+        # 서버 없이 더미로 볼 때는 예전처럼 화면에서 직접 만든다
+        ctx = marketing_ai.build_context(repo, ss["grade_rule"])
+        ss["ai_candidates"] = marketing_ai.suggest_candidates(ctx, *marketing_ai.external_context())
     ss["ai_picked"] = None
 
 

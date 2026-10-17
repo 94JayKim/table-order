@@ -5,12 +5,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.settings import Settings, get_settings
 from app.routers import admin, ai, auth, content, coupons, dev, menus, orders, roulette, roulette_prizes, staff_calls, store, user
+from app.services.external_info import ExternalInfoService
 from app.services.kakao import KakaoClient
 from app.services.supabase_auth import SupabaseAuthClient
 from app.services.sms import SmsService
+from app.services.sms_candidates import SmsCandidateService
 from app.stores.coupons import CouponStore
 from app.stores.db import Database
 from app.stores.dev_test import DevTestStore
+from app.stores.external_context import ExternalContextStore
 from app.stores.login_sessions import LoginSessionStore
 from app.stores.members import MemberStore
 from app.stores.roulette_prizes import RoulettePrizeStore
@@ -45,6 +48,9 @@ def create_app(settings: Settings | None = None, sms_clock=None, sms_http=None) 
     app.state.roulette_prizes = RoulettePrizeStore(db)
     app.state.sms_logs = SmsLogStore(db)
     app.state.sms = SmsService(settings, app.state.members, app.state.sms_logs, clock=sms_clock, http=sms_http)
+    # AI 문자 후보 · 외부 정보: 날씨·행사는 하루 한 번만 불러 DB(external_context)에 저장한다
+    app.state.external = ExternalInfoService(settings, ExternalContextStore(db))
+    app.state.sms_candidates = SmsCandidateService(settings, app.state.sms, app.state.shop, app.state.external)
     app.state.kakao = KakaoClient(settings)
     app.state.supabase = SupabaseAuthClient(settings)
     app.dependency_overrides[get_settings] = lambda: settings

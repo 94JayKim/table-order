@@ -42,10 +42,12 @@ MENUS = [
     _menu("b1", "beer", "생맥주 500cc", 4500, set_ok=False),
     _menu("j1", "soju", "참이슬", 5000, set_ok=False),
     _menu("d1", "side", "콜라", 2000, set_ok=False),
+    _menu("d7", "side", "라면", 4000, set_ok=False),
+    _menu("d8", "side", "짜장라면", 4500, set_ok=False),
 ]
 
-# 손님 화면 룰렛 칸(user/menu_data.py)의 앞 3칸에 당첨 확률 가중치(weight)를 더한 것.
-ROULETTE_PRIZES = [{**p, "weight": 1} for p in menu_data.ROULETTE_PRIZES[:3]]
+# 손님 화면과 같은 룰렛 칸에 관리자용 확률 가중치(weight)를 더한다.
+ROULETTE_PRIZES = [{**p, "weight": 1} for p in menu_data.ROULETTE_PRIZES]
 
 
 class Unsupported(Exception):

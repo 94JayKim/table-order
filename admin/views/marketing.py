@@ -26,7 +26,12 @@ def make_ai_candidates(repo):
     """[AI 문자 생성]: 수신자와 문구를 내부적으로 만들어 후보 버튼으로 보여 준다."""
     if repo.source == "api":
         # 서버가 매장 데이터·오늘 날씨/행사를 반영해 후보를 만든다 (AI 키가 없으면 템플릿)
-        ss["ai_candidates"] = repo.sms_candidates()
+        try:
+            ss["ai_candidates"] = repo.sms_candidates()
+        except (repo_mod.api.ApiError, repo_mod.api.ApiUnavailable) as e:
+            # 콜백에서 예외가 나면 화면이 'error' 로 멈추므로, 실패 이유를 알리고 후보만 비운다
+            ss["ai_candidates"] = []
+            st.toast(f"AI 문자 후보를 만들지 못했습니다: {e}", icon="⚠️")
     else:
         # 서버 없이 더미로 볼 때는 예전처럼 화면에서 직접 만든다
         ctx = marketing_ai.build_context(repo, ss["grade_rule"])

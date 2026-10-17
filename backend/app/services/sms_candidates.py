@@ -56,8 +56,8 @@ class SmsCandidateService:
     def summary(self) -> dict:
         """문구에 쓸 사실만 모은다: 등급별 수신 가능 회원 수, 추천 가중치 높은 메뉴, 인기 메뉴."""
         today = self.sms.clock().date()
-        rule = {"repeat": self.s.grade_repeat_visits, "regular": self.s.grade_regular_visits,
-                "dormant": self.s.grade_dormant_days}
+        # 후보별 고객 수와 실제 발송 대상이 같은 등급 정책을 사용한다.
+        rule = self.sms.grade_rule()
         pool = Counter(grade_of(m, today, **rule) for m in self.sms.targets(GRADES))
         try:  # 메뉴 저장소가 아직 뼈대(NotImplementedError)면 기본 메뉴 파일(seed/menu.json)을 쓴다
             menus = self.shop.menus()

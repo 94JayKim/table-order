@@ -22,6 +22,7 @@ import order_filters  # noqa: E402
 from admin.marketing import recommendations as marketing_recommendations  # noqa: E402
 from admin.views import dashboard as dashboard_view  # noqa: E402
 from admin.views import marketing as marketing_view  # noqa: E402
+from admin.views import customers as customers_view  # noqa: E402
 
 # 배포 서버가 재시작 없이 새 코드를 받으면 예전 모듈이 메모리에 남아 ImportError 가 난다.
 # 상태가 없는 계산 모듈은 매 실행마다 다시 읽는다.
@@ -39,7 +40,7 @@ def _reload_if_changed(*modules) -> None:
 
 
 # 추천 함수부터 화면 순서로 갱신해, 켜 둔 서버에서도 바뀐 단골 안내가 즉시 반영되게 한다.
-_reload_if_changed(admin_dummy_data, marketing_recommendations, marketing_ai, repo_mod, dashboard_view, marketing_view)
+_reload_if_changed(admin_dummy_data, marketing_recommendations, marketing_ai, repo_mod, dashboard_view, marketing_view, customers_view)
 
 from admin.views.customers import page_customers  # noqa: E402
 from admin.views.calls import page_calls  # noqa: E402
@@ -105,6 +106,15 @@ if not ss["owner"]:
     st.stop()
 
 repo = ss["repo"]
+# 다른 관리자나 서버 재시작으로 저장 기준이 바뀌어도 모든 메뉴에서 최신 값을 반영한다.
+# 저장값이 같으면 고객 화면에서 입력하던 미리보기는 유지한다.
+current_rule = repo.customer_grade_rules()
+if ss.get("customer_rule_defaults") != current_rule or ss.get("customer_rule_source") != repo.source:
+    ss["customer_rule_defaults"] = dict(current_rule)
+    ss["customer_rule_source"] = repo.source
+    customers_view.reset_rule()
+    for key in ("ai_candidates", "ai_picked", "sms_excluded"):
+        ss.pop(key, None)
 store = repo.backend.store()
 with st.sidebar:
     st.html(f'<div class="sb-brand"><div class="sb-logo">🍺</div><div><div class="sb-name">식당도우미</div>'

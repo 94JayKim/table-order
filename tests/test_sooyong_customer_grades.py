@@ -55,21 +55,25 @@ def test_repository_matches_server_summary_and_keeps_dummy_contract(server):
         assert dummy.customer_grades(rule)[grade] == int((members["등급"] == grade).sum())
 
 
-def test_customer_screen_uses_server_defaults_and_preview_does_not_save(server, monkeypatch):
+def test_customer_screen_keeps_conditions_until_save_and_does_not_write_on_edit(server, monkeypatch):
     app = open_rules(monkeypatch)
     assert app.number_input(key="rule_regular").value == 8
     app.number_input(key="rule_regular").set_value(5).run()
     assert not app.exception
-    assert app.session_state["repo"].customer_grades(app.session_state["grade_rule"])["단골"] == 1
+    assert app.session_state["repo"].customer_grades(app.session_state["grade_rule"])["단골"] == 0
     assert app.session_state["repo"].customer_grade_rules()["regular"] == 8
     app.sidebar.radio(key="nav_sub_고객 등급").set_value("고객 목록").run()
     assert not app.exception
-    assert app.dataframe[0].value.iloc[0]["등급"] == "단골"
+    assert app.dataframe[0].value.iloc[0]["등급"] == "재방문"
     app.sidebar.radio(key="nav_sub_고객 등급").set_value("등급 분류 기준").run()
-    assert app.number_input(key="rule_regular").value == 5
+    assert app.number_input(key="rule_regular").value == 8
+    # 입력만으로 조건을 바꾸지 않고, 복원 버튼을 누를 때 초기 기준으로 바뀐다.
+    app.number_input(key="rule_regular").set_value(6).run()
     app.button(key="rule_reset").click().run()
     assert not app.exception
-    assert app.number_input(key="rule_regular").value == 8
+    assert app.number_input(key="rule_regular").value == 5
+    assert app.session_state["grade_rule"]["regular"] == 5
+    assert app.session_state["repo"].customer_grade_rules()["regular"] == 8
 
 
 def test_summary_cards_use_new_endpoint_and_handle_empty_database(server, monkeypatch):

@@ -27,8 +27,8 @@ def render_sales_insights(s, x):
         kpi("오늘 주문", s["today_orders"], "건", accent=True),
         kpi("평균 주문금액", f"{s['avg_order_amount']:,}" if s["today_orders"] else "-", "원" if s["today_orders"] else ""),
         kpi("오늘 매출", f"{x.get('today_revenue', x['last_day_revenue']):,}", "원", sub="현재까지 들어온 주문"),
-        kpi("마지막 영업일 매출", f"{x['last_day_revenue']:,}", "원", sub=delta_text(x["last_day_change"], "지난주 같은 요일")),
-        kpi("최근 매출 (7일)", f"{x['week_revenue']:,}", "원", sub=delta_text(x["week_change"], "지난 7일")),
+        kpi("마지막 영업일 매출", f"{x['last_day_revenue']:,}", "원", sub=delta_text(x["last_day_change"], "지난주 같은 요일"), sub_change=x["last_day_change"]),
+        kpi("최근 매출 (7일)", f"{x['week_revenue']:,}", "원", sub=delta_text(x["week_change"], "지난 7일"), sub_change=x["week_change"]),
         kpi("최근 매출 (30일)", f"{x['revenue']:,}", "원", sub=f"하루 평균 {x['daily_revenue']:,}원"),
         min_width=150,
     )
@@ -95,8 +95,8 @@ def render_trend_insights(x, popular_menus=None):
         return
     sec_title("매출 추이", "일별 매출과 주문 금액대를 확인해요")
     kpi_row(
-        kpi("최근 7일 매출", f"{x['week_revenue']:,}", "원", sub=delta_text(x["week_change"], "지난 7일"), accent=True),
-        kpi("마지막 영업일 매출", f"{x['last_day_revenue']:,}", "원", sub=delta_text(x["last_day_change"], "지난주 같은 요일")),
+        kpi("최근 7일 매출", f"{x['week_revenue']:,}", "원", sub=delta_text(x["week_change"], "지난 7일"), accent=True, sub_change=x["week_change"]),
+        kpi("마지막 영업일 매출", f"{x['last_day_revenue']:,}", "원", sub=delta_text(x["last_day_change"], "지난주 같은 요일"), sub_change=x["last_day_change"]),
         kpi("최근 30일 매출", f"{x['revenue']:,}", "원", sub=f"하루 평균 {x['daily_revenue']:,}원"),
     )
     _render_panel_grid(

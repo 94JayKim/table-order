@@ -19,10 +19,24 @@
 | 순서 | 할 일 | API | 상태 |
 |---|---|---|---|
 | 0 | 0. 개발 흐름 확인 (테스트 버튼) | `POST /api/dev/db-test` (개발 전용) | 확인 전 |
-| 1 | 1. 고객 등급 · 수신거부 점검 | `GET /api/admin/customers`, `…/customers/grades`, `…/grades/rules`, `POST …/customers/{id}/opt-out` | 1-1 기존 구현 / 1-2 구현·자동 테스트 완료 |
-| 2 | 2. 대시보드 기본 통계 | `GET /admin/api/stats/sales`, `stats/menus/ranking`, `stats/customers`, `stats/ai-recommendations` | 구현·기능 테스트 완료 (전체 화면 테스트의 기존 룰렛 오류 별도) |
-| 3 | 3. 대시보드 추가 통계 | `stats/sales/hourly·trends·weekday·tickets`, `stats/tables` | 구현·기능 테스트 완료 (전체 화면 테스트의 기존 룰렛 오류 별도) |
-| 4 | 4. 메뉴 품절 조회 · 중복 고객 정보 제외 | `GET /admin/api/alerts` | 구현·기능 테스트 완료 (전체 화면 테스트의 기존 룰렛 오류 별도) |
+| 1 | 1. 고객 등급 · 수신거부 점검 | `GET /admin/api/customers`, `…/customers/grades`, `…/grades/rules`, `POST …/customers/{id}/opt-out` | 구현·담당 기능 테스트 완료, 실제 DB 조회 재검증 완료 |
+| 2 | 2. 대시보드 기본 통계 | `GET /admin/api/stats/sales`, `stats/menus/ranking`, `stats/customers`, `stats/ai-recommendations` | 구현·담당 기능 테스트 완료, 실제 DB 재검증 완료 |
+| 3 | 3. 대시보드 추가 통계 | `stats/sales/hourly·trends·weekday·tickets`, `stats/tables` | 구현·담당 기능 테스트 완료, 증감률 색상·실제 DB 재검증 완료 |
+| 4 | 4. 메뉴 품절 조회 · 중복 고객 정보 제외 | `GET /admin/api/alerts` | 구현·담당 기능 테스트 완료, 실제 DB·화면 재검증 완료 |
+
+**2026-10-17 수용 담당 1~4번 재점검**
+
+- 1~3번은 실제 Supabase와 실행 중인 API를 대조한 **93개 점검**을 통과했다. 필요한 테이블 27개, 회원 41명, 전체 주문 133건 중 최근 30일 주문 115건을 읽기 전용으로 확인했다.
+- 고객 목록·등급 집계·설정과 미리보기 결과가 일치하며, 미리보기 전후 회원 기록·기본 설정은 동일했다. 오늘(KST) 주문·평균 금액, AI 지표, 최근 매출 합계, 금액대별 주문 수, 전주 대비 증감률, 회전율과 세부 API 응답도 DB 집계와 일치했다. 잘못된 기준의 422·미인증 요청의 401을 확인했다.
+- 1~3번 지정 자동 테스트는 서버 **83 passed**, 화면 **19 passed**다. 수신거부 쓰기·빈 DB·날짜 경계·새로고침은 별도 메모리 DB 테스트로 확인했으며 실제 고객의 수신거부 상태를 변경하지 않았다.
+- 4번은 기존 커밋 `ce7d4db`에 이미 구현되어 있어 중복 구현하지 않았다. 실제 DB 품절 메뉴와 `/admin/api/alerts` 결과가 일치했고, 품절 1개·인기 품절 0개를 확인했다. 지정 자동 테스트는 서버 **6 passed**, 화면 **5 passed**로 품절 해제·빈 DB·판매 수량·중복 고객 카드 제외 등을 검증했다.
+- 실제 API 모드로 대시보드 5개 하위 화면과 고객 목록·등급 분류 기준, 총 **7개 화면**을 오류 없이 확인했다. 등급 미리보기·기본값 복원과 메뉴 새로고침도 정상이다. 실제 DB 기록·스키마와 다른 담당자의 코드는 변경하지 않았다.
+
+**남은 작업과 완료 범위**
+
+- 현재 정한 1~4번 기능 범위에는 추가 미구현 항목이 없다. 4번의 휴면 고객 알림은 아래 범위 조정에 따라 제외했으며, 고객 등급 화면에서 해당 고객 수·목록을 확인한다. 메뉴 등록·수정, 알림 이력 저장·읽음 처리는 4번 완료 조건에 포함하지 않는다.
+- 0번 개발 흐름 확인은 미체크 상태다. 이번 기능 검증만으로 개발 전용 테스트 버튼·흐름 확인용 PR 생성/닫기까지 완료했다고 표시하지 않는다. 코드 공유를 위한 커밋·PR 절차도 기능 구현 완료와 구분한다.
+- README의 수용 1~4번 체크와 실제 DB 구현 안내를 현재 코드에 맞췄다. 과거 API 목록·담당 분배표의 더미/미구현 표시는 작성 당시 기록이므로 현재 기능 상태는 이 TODO와 실제 `/admin/api/...` 경로를 기준으로 확인한다.
 
 **다른 팀원과 겹치는 지점**
 
@@ -57,9 +71,9 @@
 
 ---
 
-## 1. 고객 등급 · 수신거부 (구현 / 부분 구현)
+## 1. 고객 등급 · 수신거부 (구현·기능 테스트 완료)
 
-### 1-1. `GET /api/admin/customers`, `POST /api/admin/customers/{customerId}/opt-out` (구현됨)
+### 1-1. `GET /admin/api/customers`, `POST /admin/api/customers/{member_id}/opt-out` (구현됨)
 
 **목표**: 이미 동작한다(`B/routers/admin/members.py`). 고객 목록에 등급이 붙고, 쿼리(`repeat`, `regular`, `dormant`)로 등급 기준을 미리 바꿔 볼 수 있다(저장은 안 됨). 코드를 고치기보다 **다른 기능이 의존하는 계약**이므로 모양을 바꾸지 않는 것이 중요하다.
 
@@ -98,17 +112,17 @@ UI(고객 등급 · 기준 조절) → A/views/customers.py → repo.members(rul
 
 **흐름**
 ```
-UI(대시보드 · 등급 카드 / 고객 등급 기준 패널) → A/views/dashboard.py · customers.py → repo (새 메서드)
+UI(고객 목록 · 등급 카드 / 고객 등급 기준 패널) → A/views/customers.py → repo.customer_grades(rule)
  → GET /admin/api/customers/grades → B/routers/admin/members.py (새 함수)
  → B/stores/members.py all() → DB(members) → B/services/grades.py grade_of → 등급별 개수 집계
- → {신규, 재방문, 단골, 휴면, dormant_count} → UI 등급 카드
+ → {신규, 재방문, 단골, 휴면, dormant_count} → 고객 등급 화면의 카드
 ```
 
 **상세 설명 / TODO**
 
 - [x] `grades`, `grades/rules` 두 함수를 `members.py` 맨 아래에 추가(경로 충돌 주의: `/customers/grades`가 `/customers/{customerId}/…`보다 **먼저** 선언돼야 한다).
 - [x] 새 `/admin/api/customers` 경로를 추가하고 기존 `/admin/api/members` 및 수신거부 응답을 유지한다. 목록·수신거부 별칭은 기존 함수를 그대로 사용한다.
-- [x] 고객 등급 카드·기준 미리보기·대시보드 휴면 고객 수가 같은 집계 API를 사용한다. 등급 계산은 기존 `grade_of()`를 재사용한다.
+- [x] 고객 목록의 등급 카드·기준 미리보기가 같은 집계 API를 사용한다. 등급 계산은 기존 `grade_of()`를 재사용한다. 대시보드의 중복 고객 카드는 4번 범위 조정에 따라 제외했다.
 
 **2026-10-16 구현·검증 기록**
 
@@ -228,10 +242,12 @@ UI(대시보드 KPI 카드) → A/views/dashboard.py → repo.stats(rule) (A/adm
 **흐름**
 ```
 UI(대시보드 · 시간대/요일 막대, 추이, 테이블 TOP5) → A/views/dashboard.py render_sales_insights·render_trend_insights
- → (현재) repo.orders() 전체 → A/dashboard_stats.py (pandas)
- → (변경) GET /admin/api/stats/sales/hourly 등 → B/routers/admin/stats.py → B/services/stats.py → B/stores/stats.py
+ → repo.sales_insights(rule) → GET /admin/api/stats/insights
+ → B/routers/admin/stats.py → B/services/stats.py → B/stores/stats.py
  → DB(orders …) → 집계 dict → UI 막대·KPI
 ```
+
+시간대·요일 등의 세부 API도 같은 계산을 사용한다. 서버 없이 실행하는 더미 모드에서만 기존 `A/dashboard_stats.py`의 화면 계산을 유지한다.
 
 **상세 설명 / TODO**
 
@@ -239,6 +255,9 @@ UI(대시보드 · 시간대/요일 막대, 추이, 테이블 TOP5) → A/views/
 - [x] 화면(`A/dashboard_stats.py`)의 계산을 `sales_insights()`·`_sales_trends()`로 함수 단위 이식하고 서버 자료형에 맞게 적용했다. 화면쪽 원본은 유지한다(`DATA_SOURCE=dummy` 대체 경로).
 - [x] 화면은 `A/views/dashboard.py`와 `A/admin_repository.py` 통계 호출 구역만 수정한다. 주문 목록의 더미 여부와 무관하게 DB 집계를 표시한다.
 - [x] `stats/tables`의 전체 테이블 수는 `app.state.store_info.get()["tables"]`에서 읽는다.
+- [x] 매출 증감률을 상승은 빨강, 하락은 파랑으로 표시한다. 변동 없음·비교 데이터 없음은 기본 색상을 유지하며, 일반·강조 카드의 8가지 표시 조합을 확인했다(2026-10-17).
+
+**2026-10-17 증감률 색상 검증**: 서버 **150 passed, 9 skipped**, 화면·통합 **108 passed, 12 skipped, 7 failed**. 실패는 위 작업과 무관한 기존 `T/test_admin_events_page.py`의 룰렛 7개이며, 대시보드 테스트는 통과했다.
 
 **2026-10-16 3번 구현·검증 기록**
 

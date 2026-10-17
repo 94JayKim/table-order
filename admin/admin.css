@@ -84,6 +84,9 @@ hr { border-color: var(--line) !important; }
 .kpi .s { color: var(--ink-3); font-size: 12px; margin-top: 6px; }
 .kpi.accent { background: linear-gradient(135deg, #ff922b, #e8590c); border: 0; }
 .kpi.accent .k, .kpi.accent .s, .kpi.accent .v small { color: rgba(255,255,255,.85); } .kpi.accent .v { color: #fff; }
+/* 증권 시세처럼 매출 상승은 빨강, 하락은 파랑으로 표시한다. 강조 카드에도 같은 색상을 적용한다. */
+.kpi .s.up, .kpi.accent .s.up { color: #dc2626; }
+.kpi .s.down, .kpi.accent .s.down { color: #2563eb; }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 20px 22px; box-shadow: var(--shadow); height: 100%; }
 .panel h3 { margin: 0 0 4px; font-size: 16px; font-weight: 800; }
 .panel .hint { color: var(--ink-3); font-size: 12.5px; margin-bottom: 16px; }

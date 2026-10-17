@@ -19,7 +19,9 @@ import admin_repository as repo_mod  # noqa: E402
 import dashboard_stats  # noqa: E402
 import marketing_ai  # noqa: E402
 import order_filters  # noqa: E402
+from admin.marketing import recommendations as marketing_recommendations  # noqa: E402
 from admin.views import dashboard as dashboard_view  # noqa: E402
+from admin.views import marketing as marketing_view  # noqa: E402
 
 # 배포 서버가 재시작 없이 새 코드를 받으면 예전 모듈이 메모리에 남아 ImportError 가 난다.
 # 상태가 없는 계산 모듈은 매 실행마다 다시 읽는다.
@@ -36,7 +38,8 @@ def _reload_if_changed(*modules) -> None:
             m._loaded_mtime = mtime
 
 
-_reload_if_changed(admin_dummy_data, marketing_ai, repo_mod, dashboard_view)
+# 추천 함수부터 화면 순서로 갱신해, 켜 둔 서버에서도 바뀐 단골 안내가 즉시 반영되게 한다.
+_reload_if_changed(admin_dummy_data, marketing_recommendations, marketing_ai, repo_mod, dashboard_view, marketing_view)
 
 from admin.views.customers import page_customers  # noqa: E402
 from admin.views.calls import page_calls  # noqa: E402

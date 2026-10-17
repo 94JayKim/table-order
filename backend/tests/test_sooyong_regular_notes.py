@@ -295,3 +295,57 @@ def test_ten_ordering_regulars_are_all_reported_without_preference_or_limit(clie
     assert {row["today_table"] for row in rows} == set(range(1, 11))
     assert all(row["preference_rate"] is None and row["favorite_menu"] is None for row in rows)
     assert len({row["note"] for row in rows}) > 1
+
+
+def test_visit_greetings_change_with_visit_situation_without_a_preference(client):
+    member = prepare(client, days=0)
+    greetings = set()
+    for visits in (5, 8, 12):
+        client.app.state.db.run("UPDATE members SET visit_count=? WHERE id=?", (visits, member["id"]))
+        row, = notes(client)
+        assert row["favorite_menu"] is None
+        assert f"{visits}번째 방문" in row["visit_context"]
+        assert "80%" not in row["visit_context"] + row["visit_note"]
+        greetings.add(row["visit_note"])
+    assert len(greetings) == 3
+
+
+def test_varied_menu_and_long_gap_greetings_follow_order_records(client):
+    member = prepare(client, days=0, visits=8)
+    db = client.app.state.db
+    db.run("INSERT INTO menus (id, category_id, name, price) VALUES (?, ?, ?, ?)",
+           ("note-pancake", "anju", "파전", 14000))
+    for days, menu_id, name in ((1, "note-fish", "먹태구이"), (2, "note-egg", "계란말이"),
+                                (3, "note-pancake", "파전")):
+        add_order(client, member["id"], days, menu_id, name)
+    varied, = notes(client)
+    assert varied["favorite_menu"] is None and "여러 안주" in varied["visit_context"]
+    assert "80%" not in varied["visit_context"] + varied["visit_note"]
+    # 과거 주문만 14일 이상 이전으로 옮겨, 실제 주문 간격에 맞는 인사로 바뀌는지 확인한다.
+    for order in db.all("SELECT id, created_at FROM orders ORDER BY id"):
+        stamp = datetime.fromisoformat(order["created_at"])
+        if stamp.astimezone(KST).date() < datetime.now(KST).date():
+            db.run("UPDATE orders SET created_at=? WHERE id=?", ((stamp - timedelta(days=13)).isoformat(), order["id"]))
+    returned, = notes(client)
+    assert "이전 주문은 14일 전" in returned["visit_context"]
+    assert returned["visit_note"] != varied["visit_note"]
+
+
+def test_remove_examples_keeps_actual_customers_and_orders_and_is_repeatable(client):
+    from app.stores.regular_examples import EXAMPLES, remove_regular_examples, seed_regular_examples
+
+    db = client.app.state.db
+    for menu_id in ("a1", "a2", "a4", "a8"):
+        db.run("INSERT INTO menus (id, category_id, name, price) VALUES (?, ?, ?, ?)", (menu_id, "anju", menu_id, 14000))
+    actual = client.app.state.members.upsert_login("actual-regular", "실제 단골")
+    add_order(client, actual["id"], 0, "a1", "a1")
+    before_members = client.app.state.members.all()
+    before_orders = db.all("SELECT * FROM orders ORDER BY id")
+    before_lines = db.all("SELECT * FROM order_items ORDER BY id")
+    seed_regular_examples(db, datetime.now(KST).date())
+    assert remove_regular_examples(db) == {"restored_members": 3, "restored_orders": 33}
+    assert client.app.state.members.all() == before_members
+    assert db.all("SELECT * FROM orders ORDER BY id") == before_orders
+    assert db.all("SELECT * FROM order_items ORDER BY id") == before_lines
+    assert not {example[0] for example in EXAMPLES} & {row["kakao_id"] for row in client.app.state.members.all()}
+    assert remove_regular_examples(db) == {"restored_members": 0, "restored_orders": 0}

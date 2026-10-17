@@ -84,6 +84,14 @@ def test_empty_db_keeps_customer_screen_working(server, monkeypatch):
     assert "단골 손님 대화 메모" not in [title.value for title in screen.subheader]
     screen.sidebar.radio(key="nav_sub_마케팅").set_value("AI 추천").run()
     assert not screen.exception and "주문율 80%" not in html_of(screen)
+    addition = next(element.value for element in screen.get("html") if 'class="recs regular-preferences"' in element.value)
+    assert "AI가 이런 인사를 추천할 예정" in addition
+    assert addition.count('class="rec"') == 2
+    assert addition.count("80%") == 1
+    assert "또 찾아주셔서 감사합니다" in addition
+    assert any("문구는 달라질 수 있어요" in element.value for element in screen.caption)
+    assert server.app.state.members.all() == []
+    assert server.app.state.db.all("SELECT * FROM orders") == []
 
 
 def test_customer_list_does_not_fetch_preferences(server, monkeypatch):
@@ -115,8 +123,11 @@ def test_three_db_examples_are_recommendation_cards(server, monkeypatch):
     assert len({row["note"] for row in server.get("/admin/api/marketing/regular-preferences",
                                                headers={"Authorization": "Bearer admin-secret"}).json()["preferences"]}) > 1
     addition = next(element.value for element in screen.get("html") if 'class="recs regular-preferences"' in element.value)
-    assert addition.count('class="rec"') == 1
+    assert addition.count('class="rec"') == 2
     assert "80% 이상" in addition and "90%" not in addition and "100%" not in addition
+    # 기본 인사 세 명과 메뉴 취향 제안 한 명으로 나누어 비율 설명이 반복되지 않게 한다.
+    assert addition.count("80% 이상") == 1
+    assert "자주 드시는 메뉴를 기억하는 인사" in addition
 
 
 def test_below_eighty_percent_still_shows_regular_without_claiming_preference(server, monkeypatch):
@@ -199,3 +210,85 @@ def test_ten_ordering_regulars_are_all_visible_without_truncating(server, monkey
         assert f"{5 + index}번째 방문" in addition
     assert addition.count("멘트 예시:") == 10 and "최대 3" not in addition
     assert "이전 주문일" not in addition
+    assert "80%" not in addition
+    assert addition.count('class="rec"') == 1
+
+
+def test_varied_regulars_and_one_preference_suggestion_use_separate_cards(server, monkeypatch):
+    """80% 손님이 있어도 일반 단골 인사에는 비율 설명 없이 모든 손님을 안내한다."""
+    from app.stores.regular_examples import remove_regular_examples, seed_regular_examples
+
+    db = server.app.state.db
+    for menu_id, name in (("a1", "먹태"), ("a2", "골뱅이"), ("a4", "계란말이"), ("a8", "파전")):
+        db.run("INSERT INTO menus (id, category_id, name, price) VALUES (?, ?, ?, ?)",
+               (menu_id, "anju", name, 14000))
+    seed_regular_examples(db, datetime.now(KST).date())
+    member = server.app.state.members.upsert_login("varied-screen", "여러 메뉴 단골")
+    db.run("UPDATE members SET visit_count=8 WHERE id=?", (member["id"],))
+    for days, menu_id, name in ((0, "a1", "먹태"), (1, "a2", "골뱅이"),
+                                (2, "a4", "계란말이"), (3, "a8", "파전")):
+        stamp = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        order = db.run("INSERT INTO orders (table_no, member_id, total, created_at) VALUES (?, ?, ?, ?)",
+                       (9, member["id"], 14000, stamp))
+        db.run("INSERT INTO order_items (order_id, menu_id, name, qty, unit_price) VALUES (?, ?, ?, ?, ?)",
+               (order, menu_id, name, 1, 14000))
+    screen = open_recommendations(monkeypatch)
+    addition = next(element.value for element in screen.get("html") if 'class="recs regular-preferences"' in element.value)
+    general, favorite = addition.split("자주 드시는 메뉴를 기억하는 인사", 1)
+    assert "여러 메뉴 단골님" in general and "8번째 방문" in general
+    assert "여러 안주" in general and "80%" not in general
+    assert favorite.count("멘트 예시:") == 1 and addition.count("80% 이상") == 1
+    # 예시를 실제로 제거한 뒤 고객 화면에서도 사라지고, 일반 단골 인사는 계속 표시된다.
+    assert remove_regular_examples(db) == {"restored_members": 3, "restored_orders": 33}
+    screen.sidebar.radio(key="nav_sub_고객 등급").set_value("고객 목록").run()
+    assert not screen.exception
+    assert len(screen.dataframe[0].value) == 1
+    assert screen.dataframe[0].value.iloc[0]["닉네임"] == "여러 메뉴 단골"
+    screen.sidebar.radio(key="nav_sub_마케팅").set_value("AI 추천").run()
+    assert not screen.exception
+    addition = next(element.value for element in screen.get("html") if 'class="recs regular-preferences"' in element.value)
+    assert "여러 메뉴 단골님" in addition and "80%" not in addition
+
+
+def test_preview_is_replaced_by_real_regular_greeting_and_changes_with_order(server, monkeypatch):
+    """발표용 예정 문구에서 실제 단골 주문에 맞는 응대로 전환되는 흐름을 확인한다."""
+    screen = open_recommendations(monkeypatch)
+    assert "AI가 이런 인사를 추천할 예정" in html_of(screen)
+    member = prepare_history(server)
+    screen.button(key="mk_rerecommend").click().run()
+    assert not screen.exception
+    addition = next(element.value for element in screen.get("html") if 'class="recs regular-preferences"' in element.value)
+    assert "AI가 이런 인사를 추천할 예정" not in addition
+    assert "주문 기억 손님님" in addition and "5번째 방문" in addition
+    assert "7번 테이블" in addition and "DB 계란말이" in addition
+    path = "/admin/api/marketing/regular-preferences"
+    headers = {"Authorization": "Bearer admin-secret"}
+    before = server.get(path, headers=headers).json()["preferences"][0]
+    assert before["visit_note"] in addition
+    # 실제 주문이 바뀌면 예정 문구를 고정하지 않고 새로운 DB 근거로 응대를 제안한다.
+    db = server.app.state.db
+    order = db.run("INSERT INTO orders (table_no, member_id, total, created_at) VALUES (?, ?, ?, ?)",
+                   (7, member["id"], 14000, datetime.now(timezone.utc).isoformat()))
+    db.run("INSERT INTO order_items (order_id, menu_id, name, qty, unit_price) VALUES (?, ?, ?, ?, ?)",
+           (order, "screen-fish", "DB 먹태", 1, 14000))
+    screen.button(key="mk_rerecommend").click().run()
+    assert not screen.exception
+    after = server.get(path, headers=headers).json()["preferences"][0]
+    addition = next(element.value for element in screen.get("html") if 'class="recs regular-preferences"' in element.value)
+    assert after["visit_note"] != before["visit_note"]
+    assert after["visit_note"] in addition
+    assert "AI가 이런 인사를 추천할 예정" not in addition
+
+
+def test_running_app_reloads_old_marketing_modules_for_preview(server, monkeypatch):
+    """기존 서버에 남은 예전 화면·추천 함수 때문에 새 안내가 사라지지 않아야 한다."""
+    from admin.marketing import recommendations
+    from admin.views import marketing
+
+    monkeypatch.setattr(recommendations, "_loaded_mtime", -1, raising=False)
+    monkeypatch.setattr(marketing, "_loaded_mtime", -1, raising=False)
+    monkeypatch.delattr(recommendations, "regular_preference_preview_cards")
+    monkeypatch.setattr(marketing, "_render_regular_preferences", lambda repo: None)
+    screen = open_recommendations(monkeypatch)
+    assert not screen.exception
+    assert "AI가 이런 인사를 추천할 예정" in html_of(screen)

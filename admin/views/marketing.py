@@ -205,7 +205,7 @@ def marketing_dashboard(repo):
                 st.rerun()
         else:
             st.caption("수신 동의한 회원이 없습니다.")
-        st.caption(f"수신거부 회원 {int(members['수신거부'].sum())}명 — 발송 대상에서 제외됩니다. (회원 본인은 태블릿에서도 거부할 수 있어요)")
+        st.caption(f"수신거부 회원 {int(members['수신거부'].sum())}명 — 발송 대상에서 제외됩니다.")
 
     logs = repo.sms_logs()
     with t_history:

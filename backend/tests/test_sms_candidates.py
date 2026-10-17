@@ -120,7 +120,7 @@ def test_ai_prompt_carries_event_name_and_concrete_menus(monkeypatch):
         member(c, "가")
         c.post(CANDIDATES, headers=ADMIN)
         assert "홍대 거리공연" in sent["user"] and "홍대 걷고싶은거리" in sent["user"]
-        assert "원 - " in sent["user"]  # 메뉴가 "이름 18,000원 - 특징" 형태로 들어간다
+        assert " - " in sent["user"] and "원" not in sent["user"]  # 메뉴가 "이름 - 짧은 특징"으로만 들어가고 가격은 없다
 
 
 def test_candidate_routes_require_admin():

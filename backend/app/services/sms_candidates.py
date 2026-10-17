@@ -35,7 +35,7 @@ PROMPT = (
     "당신은 호프집 사장님을 돕는 문자 카피라이터입니다. 아래 키워드와 매장 정보로 손님에게 보낼 문자 본문 한 개만 쓰세요. "
     "구체적으로 쓰세요: 행사가 주어지면 행사명을 그대로(따옴표 안의 이름) 말하고 장소·기간도 한 가지 이상 넣으세요. "
     "날씨가 주어지면 날씨·기온을 구체적으로 말하고, 메뉴는 '인기 메뉴' 같은 두루뭉술한 말 대신 "
-    "주어진 메뉴 이름(괄호 앞부분)과 그 특징 한 가지를 말하세요. "
+    "주어진 메뉴 이름과 특징을 짧은 한 구절로 말하세요. 가격·할인율은 쓰지 마세요. "
     "주어진 정보에 없는 메뉴·행사·할인은 지어내지 마세요. "
     "한국어 존댓말, 친근한 톤, 100자 이내, 이모지 없이. (광고) 표기와 수신거부 안내는 시스템이 붙이니 쓰지 마세요. "
     "설명 없이 문구만 출력하세요.")
@@ -79,8 +79,9 @@ class SmsCandidateService:
     # ---- 문구 만들기 ----
     def _facts(self, summary: dict, info: dict) -> dict:
         weight_menu = self._short_name(summary["high_weight"][0]["name"]) if summary["high_weight"] else "인기 메뉴"
-        detail = "; ".join(f"{m['name']} {m['price']:,}원 - {m['desc']}" if m["price"] else m["name"]
-                           for m in summary["high_weight"])
+        # 가격은 문자에 쓰지 않으므로 빼고, 설명은 첫 구절만 짧게 쓴다
+        detail = "; ".join(f"{self._short_name(m['name'])} - {self._short_desc(m['desc'])}" if m["desc"]
+                           else self._short_name(m["name"]) for m in summary["high_weight"])
         return {"weight_detail": detail or weight_menu, "weather": info["weather_text"].strip() or DEFAULT_WEATHER,
                 "event": info["event_text"].strip() or DEFAULT_EVENT,
                 "weight_menu": weight_menu, "top_menu": (summary["top_items"] or [weight_menu])[0]}
@@ -89,6 +90,12 @@ class SmsCandidateService:
     def _short_name(name: str) -> str:
         """메뉴 이름에서 괄호 설명을 뺀다: "역전 옛날통닭 (한 마리·후라이드)" → "역전 옛날통닭"."""
         return name.split("(")[0].strip() or name
+
+    @staticmethod
+    def _short_desc(desc: str) -> str:
+        """메뉴 설명을 첫 구절(쉼표·마침표 앞)만, 최대 20자로 줄인다: "겉은 바삭, 속은 촉촉한 가마솥 통닭" → "겉은 바삭"."""
+        first = desc.replace(".", ",").split(",")[0].strip()
+        return first[:20]
 
     def template(self, keywords, f: dict) -> str:
         """AI 를 못 쓸 때의 문구: 키워드마다 한 문장을 이어 붙인다."""
@@ -105,7 +112,7 @@ class SmsCandidateService:
     def _ask_gemini(self, keywords, f: dict) -> str:
         """제미나이에 문구 한 개를 요청한다. 실패하면 예외."""
         user = (f"키워드: {', '.join(keywords)}\n오늘 날씨: {f['weather']}\n주변 행사: {f['event']}\n"
-                f"추천 메뉴(이름 가격 - 특징): {f['weight_detail']}\n실제 많이 팔린 메뉴: {f['top_menu']}")
+                f"추천 메뉴(이름 - 특징): {f['weight_detail']}\n실제 많이 팔린 메뉴: {f['top_menu']}")
         r = httpx.post(
             f"https://generativelanguage.googleapis.com/v1beta/models/{self.s.gemini_model}:generateContent",
             timeout=15, headers={"x-goog-api-key": self.s.gemini_api_key},

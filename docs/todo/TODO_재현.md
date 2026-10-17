@@ -121,7 +121,7 @@ UI(주문 확인 다이얼로그 · 주문하기) → U/ui/dialogs.py → ctx.RE
 - [x] 주의: `ShopStore`가 메뉴를 쓰려면 서준의 `seed_menus()`가 필요하다. 서준 작업 전에는 `menu_id`를 null로 두고 테스트한다.
 - [x] 화면 변경은 필요 없다(응답 `{no, ai_combo, used_coupon_ids}` 모양 유지).
 
-### 2-2. `GET /api/v1/tables/{tableId}/orders` (미구현)
+### 2-2. `GET /api/v1/tables/{tableId}/orders` (완료)
 
 **목표**: 주문내역 다이얼로그에 "이 테이블에서 지금까지 시킨 것"을 합계와 함께 보여준다. **`table_logins`의 로그인 시각 이후 주문만** 합산한다 (손님이 바뀌면 이전 손님 주문이 안 섞이게. `table_sessions` 테이블은 만들지 않는다).
 

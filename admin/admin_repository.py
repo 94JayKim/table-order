@@ -117,6 +117,10 @@ class ApiBackend:
     def sms_cancel(self, log_id):
         return api.post(f"{ENDPOINTS['sms']}/logs/{log_id}/cancel", self.token)
 
+    def sms_candidates(self):
+        """AI 문자 후보 [{keywords, grades, body, source}] 를 서버가 만들어 준다 (날씨·행사·매장 데이터 반영)."""
+        return api.post(f"{ENDPOINTS['sms']}/candidates", self.token)
+
     def sms_logs(self):
         return api.get(f"{ENDPOINTS['sms']}/logs", self.token)
 

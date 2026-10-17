@@ -90,10 +90,37 @@ def test_fetch_events_filters_by_gu_and_date(monkeypatch):
     monkeypatch.setattr(httpx, "get", fake_get)
     with TestClient(create_app(settings(seoul_openapi_key="KEY"))) as c:
         text = c.app.state.external.fetch_events("2026-10-17")
-        assert text == "마포구 '마포 공연' 행사 진행 중"
+        assert text == "마포구 '마포 공연'(10/1~10/30) 행사 진행 중"  # 장소가 없으면 기간만 붙는다
         assert seen["url"] == EVENT_URL.format(key="KEY", day="2026-10-17")
         c.app.state.external.s.seoul_openapi_key = ""
         assert c.app.state.external.fetch_events("2026-10-17") == ""  # 키가 없으면 호출 없이 빈 값
+
+
+def test_event_text_has_title_place_and_dates(monkeypatch):
+    rows = [{"TITLE": "홍대 거리공연", "PLACE": "홍대 걷고싶은거리", "GUNAME": "마포구",
+             "STRTDATE": "2026-10-15 00:00:00.0", "END_DATE": "2026-10-20 00:00:00.0"}]
+    monkeypatch.setattr(httpx, "get", lambda url, **kw: httpx.Response(
+        200, json={"culturalEventInfo": {"row": rows}}, request=httpx.Request("GET", url)))
+    with TestClient(create_app(settings(seoul_openapi_key="KEY"))) as c:
+        assert c.app.state.external.fetch_events("2026-10-17") == \
+            "마포구 '홍대 거리공연'(홍대 걷고싶은거리, 10/15~10/20) 행사 진행 중"
+
+
+def test_ai_prompt_carries_event_name_and_concrete_menus(monkeypatch):
+    """AI 에게 행사명·장소와 실제 메뉴(이름·가격·설명)를 그대로 넘겨 문구가 구체적이게 한다."""
+    sent = {}
+
+    def fake_post(url, **kw):
+        sent["user"] = kw["json"]["contents"][0]["parts"][0]["text"]
+        body = {"candidates": [{"content": {"parts": [{"text": "문구"}]}}]}
+        return httpx.Response(200, json=body, request=httpx.Request("POST", url))
+    monkeypatch.setattr(httpx, "post", fake_post)
+    with TestClient(create_app(settings(gemini_api_key="k"), sms_clock=at(14))) as c:
+        fake_external(c, event="마포구 '홍대 거리공연'(홍대 걷고싶은거리, 10/15~10/20) 행사 진행 중")
+        member(c, "가")
+        c.post(CANDIDATES, headers=ADMIN)
+        assert "홍대 거리공연" in sent["user"] and "홍대 걷고싶은거리" in sent["user"]
+        assert "원 - " in sent["user"]  # 메뉴가 "이름 18,000원 - 특징" 형태로 들어간다
 
 
 def test_candidate_routes_require_admin():

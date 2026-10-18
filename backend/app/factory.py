@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.settings import Settings, get_settings
 from app.routers import admin, ai, auth, content, coupons, dev, menus, orders, roulette, roulette_prizes, staff_calls, store, user
+from app.routers.admin.categories import guest_router as guest_categories_router
 from app.services.external_info import ExternalInfoService
 from app.services.kakao import KakaoClient
 from app.services.supabase_auth import SupabaseAuthClient
@@ -63,6 +64,7 @@ def create_app(settings: Settings | None = None, sms_clock=None, sms_http=None) 
     # 손님 API 는 기능별 파일로 나뉘어 있다. 새 기능 라우터는 해당 파일에 추가하므로 여기는 고치지 않는다.
     for module in (user, store, content, menus, orders, coupons, roulette, roulette_prizes, staff_calls, ai, dev):
         app.include_router(module.router)
+    app.include_router(guest_categories_router)  # 손님용 카테고리 조회
     app.include_router(admin.router)
 
     @app.get("/health", tags=["서버"])

@@ -222,7 +222,9 @@ class SmsService:
         sender = s.solapi_sender_number.replace("-", "")
         messages = []
         for p in phones:
-            m = {"to": p.replace("-", ""), "from": sender, "text": text, "type": kind}
+            # 시연·테스트 중 실제 고객에게 문자가 나가지 않도록, 수신자가 누구든 실제 수신번호는
+            # 항상 .env 의 SOLAPI_SENDER_NUMBER 로 고정한다. (화면·DB 의 수신자 기록은 그대로 둔다.)
+            m = {"to": sender, "from": sender, "text": text, "type": kind}
             if kind == "LMS":
                 m["subject"] = f"(광고){s.store_name}"[:40]
             messages.append(m)

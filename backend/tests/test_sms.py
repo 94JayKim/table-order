@@ -100,7 +100,7 @@ def test_real_send_via_solapi_and_failure_logged():
         assert req.headers["authorization"].startswith("HMAC-SHA256 ApiKey=ak, Date=")
         import json
         m = json.loads(req.content)["messages"][0]
-        assert m["to"] == "01011112222" and m["from"] == "01099998888" and m["type"] == "SMS"
+        assert m["to"] == "01099998888" and m["from"] == "01099998888" and m["type"] == "SMS"
         assert m["text"].startswith("(광고)") and "080-111-2222" in m["text"]
         bad = c.post("/admin/api/marketing/sms/send", headers=ADMIN, json=body())
         assert bad.status_code == 409 and "SenderIdNotFound" in bad.json()["detail"]["problems"][0]

@@ -286,13 +286,42 @@ def marketing_recommend_tab(repo):
     _render_regular_preferences(repo)
 
 
+def _open_chat(session: dict) -> None:
+    """서버가 준 대화방 한 개를 화면 상태에 올린다. 목록 선택 상자도 같은 대화로 맞춘다."""
+    ss["mk_chat_sid"], ss["mk_chat"], ss["mk_chat_pick"] = session["id"], session["messages"], session["id"]
+
+
 def _server_chat(repo) -> list[dict]:
     """서버 챗봇 대화를 불러온다. 브라우저를 새로고침해도 서버(DB)에 저장된 가장 최근 대화를 이어서 보여 준다."""
     if "mk_chat_sid" not in ss:
         sessions = repo.chat_sessions()
-        session = repo.chat_get(sessions[0]["id"]) if sessions else repo.chat_create()
-        ss["mk_chat_sid"], ss["mk_chat"] = session["id"], session["messages"]
+        _open_chat(repo.chat_get(sessions[0]["id"]) if sessions else repo.chat_create())
     return ss["mk_chat"]
+
+
+def _new_chat(repo) -> None:
+    """[새 대화] 버튼: 새 대화방을 만들어 바로 열고 목록에 추가한다. 지금 대화가 비어 있으면 새로 만들지 않는다."""
+    if len(ss.get("mk_chat", [])) <= 1:  # 인사 메시지뿐이면 이미 새 대화다 (빈 대화방이 목록에 쌓이지 않게)
+        st.toast("이미 새 대화예요. 질문을 입력해 보세요.", icon="🆕")
+        return
+    try:
+        _open_chat(repo.chat_create())
+    except (repo_mod.api.ApiError, repo_mod.api.ApiUnavailable) as e:  # 콜백에서 예외가 나면 화면이 멈추므로 토스트로 알린다
+        st.toast(f"새 대화를 만들지 못했어요: {e}", icon="⚠️")
+
+
+def _switch_chat(repo) -> None:
+    """대화 목록에서 고른 이전 대화를 불러와 이어서 질문할 수 있게 한다."""
+    try:
+        _open_chat(repo.chat_get(ss["mk_chat_pick"]))
+    except (repo_mod.api.ApiError, repo_mod.api.ApiUnavailable) as e:
+        st.toast(f"대화를 불러오지 못했어요: {e}", icon="⚠️")
+
+
+def _chat_label(session: dict) -> str:
+    """목록에 보일 이름: 제목 + 마지막 대화 시각(한국 시간)."""
+    when = datetime.fromisoformat(session["updated_at"]).astimezone(timezone(timedelta(hours=9)))
+    return f"{session['title']} · {when:%m/%d %H:%M}"
 
 
 def marketing_chatbot_tab(repo):
@@ -302,15 +331,19 @@ def marketing_chatbot_tab(repo):
     if server:
         try:
             chat = _server_chat(repo)
+            sessions = repo.chat_sessions()
         except (repo_mod.api.ApiError, repo_mod.api.ApiUnavailable) as e:
             st.warning(f"서버 챗봇을 쓸 수 없어 모의 응답으로 대신해요: {e}")
             server = False
     if server:
-        st.caption("대화는 서버에 저장돼요. 지난 대화는 새로고침해도 이어져요.")
-        if st.button("🆕 새 대화", key="mk_chat_new"):
-            ss.pop("mk_chat_sid", None)
-            ss.pop("mk_chat", None)
-            st.rerun()
+        st.caption("대화는 서버에 저장돼요. 목록에서 이전 대화를 골라 이어서 질문할 수 있어요.")
+        labels = {s["id"]: _chat_label(s) for s in sessions}
+        if ss["mk_chat_sid"] not in labels:  # 방금 만든 대화가 목록 조회보다 늦게 반영돼도 목록에 보이게 한다
+            labels = {ss["mk_chat_sid"]: "새 대화", **labels}
+        c_list, c_new = st.columns([4, 1], vertical_alignment="bottom")
+        c_list.selectbox("대화 목록", list(labels), format_func=labels.get, key="mk_chat_pick",
+                         on_change=_switch_chat, args=(repo,))
+        c_new.button("🆕 새 대화", key="mk_chat_new", on_click=_new_chat, args=(repo,), width="stretch")
     else:
         st.caption("🧪 서버에 연결되지 않아 규칙 기반 모의 응답이에요.")
         chat = ss.setdefault("mk_chat_mock", [{"role": "assistant", "content": marketing_ai.GREETING}])
@@ -322,6 +355,7 @@ def marketing_chatbot_tab(repo):
             try:
                 with st.spinner("답변을 만드는 중이에요..."):
                     chat.extend(repo.chat_send(ss["mk_chat_sid"], prompt))
+                st.rerun()  # 첫 질문이면 대화방 제목이 바뀌므로 목록을 다시 불러온다 (ss 에 답변은 이미 들어 있다)
             except (repo_mod.api.ApiError, repo_mod.api.ApiUnavailable) as e:
                 st.toast(f"답변을 받지 못했어요: {e}", icon="⚠️")
         elif prompt:

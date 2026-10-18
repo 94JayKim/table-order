@@ -65,13 +65,10 @@ def recipient_editor(pool, grades):
     return [int(i) for i in edited.loc[edited["발송"], "customer_id"]]
 
 
-def usage_card(label, used, limit):
-    pct = min(100, used / limit * 100) if limit else 0
-    tone = " hot" if pct >= 90 else ""
+def usage_card(label, used):
+    """이번 달 발송 건수만 보여 주는 카드 (한도·사용률은 표시하지 않는다)."""
     return (f'<div class="kpi"><div class="k">{escape(label)}</div>'
-            f'<div class="v">{used}<small>/ {limit}건</small></div>'
-            f'<div class="meter{tone}"><i style="width:{pct:.0f}%"></i></div>'
-            f'<div class="s">이번 달 무료 한도의 {pct:.0f}% 사용</div></div>')
+            f'<div class="v">{used}<small>건</small></div></div>')
 
 
 def phone_preview(plan, body_empty):
@@ -131,8 +128,8 @@ def marketing_dashboard(repo):
     except (Unsupported, AttributeError, repo_mod.api.ApiError, repo_mod.api.ApiUnavailable):
         bal = {"available": False, "reason": "서버에 연결되지 않았습니다."}
     st.html('<div class="kpis">'
-            + usage_card("이번 달 SMS", usage["used"]["SMS"], usage["limit"]["SMS"])
-            + usage_card("이번 달 LMS", usage["used"]["LMS"], usage["limit"]["LMS"])
+            + usage_card("이번 달 SMS", usage["used"]["SMS"])
+            + usage_card("이번 달 LMS", usage["used"]["LMS"])
             + (kpi("솔라피 잔액", f'{int(bal["balance"]):,}', "원", sub=f'포인트 {int(bal["point"]):,}원')
                if bal.get("available") else kpi("솔라피 잔액", "-", "", sub=bal.get("reason", "조회할 수 없습니다.")))
             + kpi("발송 가능 고객", len(pool), "명", sub=f"전체 회원 {len(members)}명 중 수신 동의", accent=True)

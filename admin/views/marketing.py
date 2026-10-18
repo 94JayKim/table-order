@@ -12,6 +12,7 @@ from admin.marketing.config import RECOMMENDATION_PAGE_SIZE
 from admin.marketing.recommendations import pick_recommendations as pick_recommendation_page
 from admin.marketing.recommendations import regular_preference_cards, regular_preference_preview_cards
 from admin.ui.widgets import kpi, page_head, sec_title
+from admin.views.growth_performance import page_growth_performance
 from admin_dummy_data import Unsupported
 from admin_repository import GRADES
 
@@ -272,7 +273,15 @@ def marketing_recommend_tab(repo):
     c2.metric("문자 발송 가능", f"{consumers['sendable']:,}명")
     c3.metric("누적 매출", f"{orders['revenue']:,}원")
     c4.metric("평균 주문금액", f"{orders['avg']:,}원")
-    recs, page, pages = pick_recommendations(marketing_ai.recommend(ctx), ss.get("mk_rec_round", 0))
+    round_no = ss.get("mk_rec_round", 0)
+    try:
+        # API 모드에서는 서버가 DB를 읽어 계산하고, 더미 모드는 같은 응답 모양의 로컬 규칙을 사용한다.
+        result = repo.opportunities(round_no)
+        recs, page, pages = result["items"], result["page"], result["pages"]
+    except (repo_mod.api.ApiError, repo_mod.api.ApiUnavailable):
+        # 추천 API만 일시적으로 실패해도 이미 읽은 화면 데이터로 기존 추천을 계속 보여 준다.
+        st.info("서버 추천을 불러오지 못해 현재 화면 데이터로 추천했어요.")
+        recs, page, pages = pick_recommendations(marketing_ai.recommend(ctx), round_no)
     cards = "".join(f'<div class="rec"><div class="rt">{i}. {escape(r["title"])}</div>'
                     f'<div class="rw">{escape(r["why"])}</div><div class="ra">👉 {escape(r["action"])}</div></div>'
                     for i, r in enumerate(recs, 1))
@@ -333,6 +342,9 @@ def marketing_chatbot_tab(repo):
 
 
 def page_marketing(repo, tab="AI 챗봇"):
-    """AI 챗봇 / AI 추천 / AI 문자 탭은 사이드바 하위 메뉴에서 고른다 (admin/app.py 의 SUBPAGES)."""
+    """마케팅 기능은 사이드바 하위 메뉴에서 고른다 (admin/app.py 의 SUBPAGES)."""
+    if tab == "F&B그로스 성과":
+        page_growth_performance(repo)
+        return
     page_head("마케팅", "수신 동의한 회원에게 문자를 보내 재방문을 이끌어요")
     {"AI 챗봇": marketing_chatbot_tab, "AI 추천": marketing_recommend_tab, "AI 문자": marketing_dashboard}[tab](repo)

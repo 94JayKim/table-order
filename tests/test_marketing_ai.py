@@ -73,7 +73,7 @@ def test_switching_tab_updates_url():
 
 def test_sidebar_sub_menus_are_collapsible_and_select_tabs():
     app = open_marketing("AI 추천")
-    assert app.sidebar.radio(key="nav_sub_마케팅").options == ["AI 챗봇", "AI 추천", "AI 문자"]
+    assert app.sidebar.radio(key="nav_sub_마케팅").options == ["AI 챗봇", "AI 추천", "AI 문자", "F&B그로스 성과"]
     assert app.sidebar.radio(key="nav_sub_주문 이력").options == ["전체 주문", "고객별 주문"]
     assert [e.label for e in app.sidebar.expander] == ["📊 대시보드", "👥 고객 등급", "🧾 주문 이력", "💬 마케팅"]
     assert [e.proto.expanded for e in app.sidebar.expander] == [False, False, False, True]  # 선택된 묶음만 펼쳐서 시작

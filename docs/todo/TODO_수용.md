@@ -21,7 +21,7 @@
 | 0 | 0. 개발 흐름 확인 (테스트 버튼) | `POST /api/dev/db-test` (개발 전용) | 확인 전 |
 | 1 | 1. 고객 등급 · 수신거부 점검 | `GET /admin/api/customers`, `…/customers/grades`, `…/grades/rules`, `…/marketing/regular-preferences`, `POST …/customers/{id}/opt-out` | 구현·DB 검증 완료, 1-3 추천 예정 예시·실제 주문 전환·실행 중 화면 갱신 검증 완료 |
 | 2 | 2. 대시보드 기본 통계 | `GET /admin/api/stats/sales`, `stats/menus/ranking`, `stats/customers`, `stats/ai-recommendations` | 구현·담당 기능 테스트 완료, 실제 DB 재검증 완료 |
-| 3 | 3. 대시보드 추가 통계 | `stats/sales/hourly·trends·weekday·tickets`, `stats/tables` | 구현·담당 기능 테스트 완료, 매출 유지·15개 테이블 주문 재분배·TOP 5 실제 화면 검증 완료 |
+| 3 | 3. 대시보드 추가 통계 | `stats/sales/hourly·trends·weekday·tickets`, `stats/tables` | 구현·담당 기능 테스트 완료, 매출 유지·15개 테이블 주문 재분배·TOP 5·매출 카드 시연 기준 검증 완료 |
 | 4 | 4. 메뉴 품절 조회 · 중복 고객 정보 제외 | `GET /admin/api/alerts` | 구현·담당 기능 테스트 완료, 실제 DB·화면 재검증 완료 |
 | 5 | 5. 고객 등급 기준 영구 저장 | `GET·PUT /admin/api/customers/grades/rules` | 구현·실제 DB 연동·전체 테스트·브라우저 저장/새로고침·복원 미리보기 분리 검증 완료 |
 
@@ -264,6 +264,7 @@ UI(대시보드 KPI 카드) → A/views/dashboard.py → repo.stats(rule) (A/adm
 
 ### 3-1. `stats/sales/hourly` · `stats/sales/weekday` · `stats/sales/trends` · `stats/sales/tickets` · `stats/tables`
 
+- [x] 2026-10-18 시연 기준 수정: 오늘 주문·평균 주문금액·오늘 매출 세 카드는 마지막 주문일을 시연의 오늘로 사용한다. 날짜가 지나도 준비한 값이 유지되며 DB 주문 기록과 나머지 통계 계산은 변경하지 않는다. 실제 Supabase 읽기 전용 연결과 실행 중인 8000번 서버에서 마지막 주문일 10/17, 30건·평균 20,500원·매출 615,000원을 확인했다. 한눈에 보기·오늘 매출 화면과 하루·한 달 경과 테스트를 통과했다. 전체 서버 **213 passed, 9 skipped**, 화면·통합 **143 passed, 12 skipped**.
 - [x] 사용자 요청에 따라 고객별 주문금액 TOP 5와 연결된 상위 고객 매출 비중을 제거한다. 한눈에 보기·고객 분석에 함께 적용하고, 매출 합계·증감률 및 주문 테이블 순위는 유지한다.
 - [x] 마지막 영업일은 완만한 상승(빨강), 최근 7일은 하락(파랑)이 동시에 나오도록 시연 주문을 여러 메뉴에 분산하고 실제 DB→API→화면 및 새로고침까지 검증한다.
 

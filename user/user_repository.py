@@ -30,17 +30,18 @@ from shared import api
 ENDPOINTS = {
     "store": "/api/v1/store",                    # {name, branch, tables}
     "menus": "/api/menus",                    # [메뉴...]
-    "content": "/api/content",                # {categories, staff_calls} (기존 묶음 경로)
+    "content": "/api/content",                # {categories} (기존 묶음 경로)
+    "staff_call_items": "/api/v1/staff-call-items",  # ["💧 물", ...]
     "questions": "/api/v1/ai/questions",      # 추천 질문·선택지
     "weather": "/api/v1/weather/current",    # 현재 날씨
     "rules": "/api/v1/ai/recommendation-rules",  # 추천 규칙
     "roulette": "/api/v1/roulette/prizes",    # 관리자 설정과 같은 DB의 룰렛 칸
     "orders": "/api/orders",                  # POST
     "table_orders": "/api/v1/tables/{table_no}/orders",  # GET
-    "calls": "/api/calls",                    # POST
+    "calls": "/api/v1/staff-calls",           # POST
     "recommendations": "/api/v1/ai/recommendations",  # POST (추천 노출 기록)
 }
-CONTENT_KEYS = ("categories", "staff_calls")
+CONTENT_KEYS = ("categories",)
 MODES = ("dummy", "api", "auto")
 
 
@@ -123,7 +124,8 @@ def _fetch_content() -> dict:
     data = {"store": api.get(ENDPOINTS["store"]), "menus": api.get(ENDPOINTS["menus"]),
             "content": content, "questions": api.get(ENDPOINTS["questions"]),
             "weather": api.get(ENDPOINTS["weather"]), "rules": api.get(ENDPOINTS["rules"]),
-            "roulette_prizes": api.get(ENDPOINTS["roulette"])}
+            "roulette_prizes": api.get(ENDPOINTS["roulette"]),
+            "staff_call_items": api.get(ENDPOINTS["staff_call_items"])}
     missing = [k for k in CONTENT_KEYS if k not in data["content"]]
     if missing:
         raise api.ApiError(502, f"서버 응답에 {missing} 가 없습니다.")
@@ -147,7 +149,7 @@ class ApiRepository:
             m.setdefault("options", [])  # 옵션 기능은 아직 서버에 없다
         c = data["content"]
         return Content(store=data["store"], categories=c["categories"], menu=menu,
-                       roulette_prizes=data["roulette_prizes"], staff_calls=c["staff_calls"],
+                       roulette_prizes=data["roulette_prizes"], staff_calls=data["staff_call_items"],
                        quiz_questions=data["questions"], weather=data["weather"], rules=data["rules"], source="api")
 
     def create_order(self, table_no, lines, total, token, coupon_ids=()):

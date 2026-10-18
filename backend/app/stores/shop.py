@@ -23,3 +23,4 @@ class ShopStore(MenuMixin, OrderMixin, CallMixin, RecommendationMixin):
         self.categories = categories.CategoryStore(db)  # 카테고리 저장소(서준 TODO 3)
 
         self.seed_menus()
+        self.seed_call_items()

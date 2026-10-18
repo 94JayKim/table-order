@@ -7,8 +7,7 @@ from tests.conftest import ADMIN, login
 
 
 def test_user_get_dummies(client):
-    assert set(client.get("/api/content").json()) == {"categories", "staff_calls",
-                                                       "quiz_questions", "weather", "rules"}
+    assert set(client.get("/api/content").json()) == {"categories", "quiz_questions", "weather", "rules"}
     assert client.get("/api/content/categories").json()[0]["id"] and client.get("/api/content/nope").status_code == 404
 
 
@@ -37,7 +36,6 @@ def test_every_listed_dummy_function_exists():
 # ---- 쓰기(POST/PUT/DELETE)도 저장 없이 화면이 깨지지 않는 성공 응답을 돌려준다 ----
 def test_user_write_dummies(client):
     h = login(client, "가")
-    assert client.post("/api/calls", json={"table_no": 3, "items": ["💧 물"]}).json()["id"]
     assert client.post("/api/recommendations", json={"table_no": 1, "params": {}, "combo_ids": ["classic"]}).json()["id"]
     me = client.get("/api/members/me", headers=h).json()["id"]
 

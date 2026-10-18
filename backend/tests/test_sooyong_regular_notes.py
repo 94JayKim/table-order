@@ -81,14 +81,15 @@ def test_eighty_percent_history_and_different_today_create_note_without_writing(
 
 
 @pytest.mark.parametrize("kwargs", [{"days": 4}, {"favorites": 3}, {"days": 0}, {"visits": 4}])
-def test_regular_without_preference_gets_visit_notice_but_nonregular_does_not(client, kwargs):
+def test_repeat_customer_without_preference_still_gets_visit_notice(client, kwargs):
     prepare(client, **kwargs)
-    rows = notes(client)
-    if kwargs.get("visits") == 4:
-        assert rows == []
+    row, = notes(client)
+    expected_visits = kwargs.get("visits", 5)
+    assert row["visit_count"] == expected_visits and f"{expected_visits}번째 방문" in row["context"]
+    if "visits" in kwargs:
+        # 방문 등급 기준과 메뉴 선호도는 별개이므로, 4회 방문이어도 충분한 주문 이력이 있으면 취향을 표시한다.
+        assert row["favorite_menu"] == "먹태구이" and row["preference_rate"] == .8
     else:
-        row, = rows
-        assert row["visit_count"] == 5 and "5번째 방문" in row["context"]
         assert row["favorite_menu"] is None and row["preference_rate"] is None
         assert row["changed_today"] is None and "80%" not in row["context"]
         assert "먹태" not in row["note"]
@@ -280,15 +281,15 @@ def test_serving_another_menu_does_not_deny_favorite_already_ordered_today(clien
     assert "오늘은 다른 메뉴" not in row["note"]
 
 
-def test_only_members_classified_as_regular_by_server_rules_are_used(client):
+def test_repeat_threshold_is_independent_from_regular_grade_threshold(client):
     from app.core.settings import get_settings
 
     member = prepare(client)
     config = Settings(_env_file=None, admin_token="admin-secret", grade_regular_visits=8)
     client.app.dependency_overrides[get_settings] = lambda: config
-    assert notes(client) == []
+    assert notes(client)[0]["grade"] == "재방문"
     client.app.state.db.run("UPDATE members SET visit_count=8 WHERE id=?", (member["id"],))
-    assert notes(client)[0]["member_id"] == member["id"]
+    assert notes(client)[0]["member_id"] == member["id"] and notes(client)[0]["grade"] == "단골"
 
 
 def test_ten_ordering_regulars_are_all_reported_without_preference_or_limit(client):

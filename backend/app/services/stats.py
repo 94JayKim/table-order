@@ -98,6 +98,8 @@ def sales_insights(orders: list[dict], members: list[dict], tables: int, today: 
     return {
         "empty": False, "days": days, "revenue": revenue, "daily_revenue": revenue // days,
         "avg_ticket": revenue // len(recent), "orders": len(recent),
+        # 시연 화면은 실제 오늘 날짜가 지나도 마지막 주문일의 건수와 매출을 함께 표시한다.
+        "last_day_orders": len(latest_orders),
         "today_revenue": sum(order["total"] for order in normalized if order["at"].date() == today),
         "by_hour": by_hour, "peak_hour": max(by_hour, key=by_hour.get),
         "by_weekday": by_weekday, "peak_weekday": max(by_weekday, key=by_weekday.get),

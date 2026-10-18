@@ -2,7 +2,7 @@
 
 FastAPI 서버 + 사용자 페이지 + 관리자 페이지를 한 저장소에서 관리하는 모노레포입니다. (역전할머니맥주 홍대점 시연용)
 
-> **현재 상태**: **QR 로그인**, **문자 발송(솔라피)**, **고객 목록·등급·수신거부**, **대시보드 기본·추가 통계**, **메뉴 품절 조회**가 실제 DB와 연동됩니다. 아직 더미인 API도 남아 있으며 `backend/app/dummy/`의 `DUMMY_ENDPOINTS`와 라우터의 `dummy.` 호출로 구분합니다. 담당별 최신 진행 상태는 `docs/todo/TODO_*.md`를 확인하세요.
+> **현재 상태**: **QR 로그인**, **문자 발송(솔라피)**, **고객 목록·등급·수신거부**, **대시보드 기본·추가 통계**, **메뉴 품절 조회**, **손님 메뉴 목록**이 실제 DB와 연동됩니다. 손님 메뉴 목록은 `GET /api/menus`에서 `menus` 테이블을 읽고, 비어 있으면 기본 메뉴를 채웁니다. 아직 더미인 API도 남아 있으며 `backend/app/dummy/`의 `DUMMY_ENDPOINTS`와 라우터의 `dummy.` 호출로 구분합니다. 담당별 최신 진행 상태는 `docs/todo/TODO_*.md`를 확인하세요.
 
 ```
 backend/   FastAPI 서버 (app factory 구조: core / routers / services / stores)

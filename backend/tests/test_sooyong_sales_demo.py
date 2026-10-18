@@ -5,8 +5,15 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.stores.sales_demo import DEMO_LABEL, LEGACY_LABEL, rebalance_sales_demo_tables, sales_demo_menus, seed_sales_demo
+from app.stores.sales_demo import (DEMO_LABEL, LEGACY_LABEL, consolidate_sales_demo_orders,
+                                   rebalance_sales_demo_tables, sales_demo_menus, seed_sales_demo)
 from tests.conftest import ADMIN
+
+
+@pytest.fixture(autouse=True)
+def _empty_menus(client):
+    """서버가 처음 뜰 때 기본 메뉴가 들어가므로, 빈 DB를 전제로 한 이 파일의 테스트를 위해 메뉴를 비운다."""
+    client.app.state.db.run("DELETE FROM menus")
 
 
 TODAY = date(2026, 10, 17)
@@ -212,5 +219,86 @@ def test_table_rebalance_failure_restores_orders_and_items(client, monkeypatch):
     monkeypatch.setattr(db, "_execute", fail_item)
     with pytest.raises(RuntimeError):
         rebalance_sales_demo_tables(db, apply=True)
+    assert db.all("SELECT * FROM orders ORDER BY id") == before_orders
+    assert db.all("SELECT * FROM order_items ORDER BY id") == before_lines
+
+
+def prepare_consolidation(client):
+    """실제 단가로 총 615,000원인 시연 주문을 기존 30건 형태로 준비한다."""
+    prepare_table_orders(client)
+    db = client.app.state.db
+    for _ in range(5):
+        order = db.run("INSERT INTO orders (table_no, total, created_at) VALUES (?, ?, ?)",
+                       (7, 35000, "2026-10-17T17:30:00+09:00"))
+        for menu_id, price in (("fish", 14000), ("egg", 16000), ("beer", 5000)):
+            db.run("INSERT INTO order_items (order_id, menu_id, name, unit_price, qty, option_label) "
+                   "VALUES (?, ?, ?, ?, ?, ?)", (order, menu_id, menu_id, price, 1, DEMO_LABEL))
+    rebalance_sales_demo_tables(db, apply=True)
+
+
+def test_consolidation_keeps_real_menu_prices_quantities_table_revenue_and_other_data(client):
+    prepare_consolidation(client)
+    db = client.app.state.db
+    before_orders = db.all("SELECT * FROM orders ORDER BY id")
+    before_lines = db.all("SELECT * FROM order_items ORDER BY id")
+    before_menus = sales_demo_menus(db)
+    before_members = client.app.state.members.all()
+    preview = consolidate_sales_demo_orders(db)
+    assert preview["before_orders"] == 30 and preview["after_orders"] == 15
+    assert preview["total"] == 615000 and preview["average"] == 41000
+    assert len(set(preview["table_amounts"].values())) >= 3
+    assert db.all("SELECT * FROM orders ORDER BY id") == before_orders
+    assert db.all("SELECT * FROM order_items ORDER BY id") == before_lines
+
+    result = consolidate_sales_demo_orders(db, apply=True)
+    actual = client.get("/admin/api/stats/insights", headers=ADMIN).json()
+    assert result["table_amounts"] == preview["table_amounts"]
+    assert len(result["removed_order_ids"]) == 15
+    assert actual["last_day_orders"] == 15 and actual["last_day_revenue"] == 615000
+    assert actual["last_day_revenue"] // actual["last_day_orders"] == 41000
+    assert sales_demo_menus(db) == before_menus and client.app.state.members.all() == before_members
+    assert db.one("SELECT * FROM orders WHERE id=?", (before_orders[0]["id"],)) == before_orders[0]
+    # 주문 연결만 바꾸고 기존 메뉴 줄의 ID·이름·단가·수량은 모두 유지한다.
+    assert [{key: value for key, value in line.items() if key != "order_id"}
+            for line in db.all("SELECT * FROM order_items ORDER BY id")] == [
+                {key: value for key, value in line.items() if key != "order_id"} for line in before_lines]
+    assert not db.all("SELECT o.id FROM orders o JOIN order_items i ON i.order_id=o.id "
+                      "GROUP BY o.id, o.total HAVING SUM(i.qty*i.unit_price)<>o.total")
+    after_orders = db.all("SELECT * FROM orders ORDER BY id")
+    repeated = consolidate_sales_demo_orders(db, apply=True)
+    assert repeated["unchanged"] and repeated["removed_order_ids"] == []
+    assert db.all("SELECT * FROM orders ORDER BY id") == after_orders
+
+
+def test_consolidation_failure_restores_moved_lines_and_removed_orders(client, monkeypatch):
+    prepare_consolidation(client)
+    db = client.app.state.db
+    before_orders = db.all("SELECT * FROM orders ORDER BY id")
+    before_lines = db.all("SELECT * FROM order_items ORDER BY id")
+    execute = db._execute
+
+    def fail_delete(sql, params=()):
+        # 메뉴 줄을 옮긴 뒤 삭제가 실패해도 전체 변경이 취소되어야 한다.
+        if sql.startswith("DELETE FROM orders"):
+            raise RuntimeError("주문 삭제 실패 재현")
+        return execute(sql, params)
+
+    monkeypatch.setattr(db, "_execute", fail_delete)
+    with pytest.raises(RuntimeError):
+        consolidate_sales_demo_orders(db, apply=True)
+    assert db.all("SELECT * FROM orders ORDER BY id") == before_orders
+    assert db.all("SELECT * FROM order_items ORDER BY id") == before_lines
+
+
+def test_consolidation_rejects_prices_different_from_registered_menu(client):
+    prepare_consolidation(client)
+    db = client.app.state.db
+    line = db.one("SELECT * FROM order_items WHERE option_label=? ORDER BY id LIMIT 1", (DEMO_LABEL,))
+    db.run("UPDATE order_items SET unit_price=unit_price+100 WHERE id=?", (line["id"],))
+    db.run("UPDATE orders SET total=total+? WHERE id=?", (100 * line["qty"], line["order_id"]))
+    before_orders = db.all("SELECT * FROM orders ORDER BY id")
+    before_lines = db.all("SELECT * FROM order_items ORDER BY id")
+    with pytest.raises(ValueError, match="등록 메뉴 가격"):
+        consolidate_sales_demo_orders(db, apply=True)
     assert db.all("SELECT * FROM orders ORDER BY id") == before_orders
     assert db.all("SELECT * FROM order_items ORDER BY id") == before_lines

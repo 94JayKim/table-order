@@ -6,6 +6,12 @@ from app.stores.stats import StatsStore
 from tests.conftest import ADMIN
 
 
+@pytest.fixture(autouse=True)
+def _empty_menus(client):
+    """서버가 처음 뜰 때 기본 메뉴가 들어가므로, 빈 DB를 전제로 한 이 파일의 테스트를 위해 메뉴를 비운다."""
+    client.app.state.db.run("DELETE FROM menus")
+
+
 def add_menu(client, menu_id, name, soldout=False):
     """메뉴 쓰기 담당 영역을 바꾸지 않고 테스트 DB에만 메뉴를 준비한다."""
     client.app.state.db.run("INSERT INTO menus (id, category_id, name, price, is_soldout) VALUES (?, ?, ?, ?, ?)",

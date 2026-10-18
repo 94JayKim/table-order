@@ -1,23 +1,14 @@
 """관리자: 메뉴 관리."""
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
-
-from app import dummy
 
 router = APIRouter()
 
-NON_MENU_CATEGORIES = {"ai", "best"}  # 화면용 가상 카테고리(AI 추천 조합·인기메뉴)에는 메뉴를 직접 넣지 않는다
-
 
 def menu_categories(request: Request) -> list[dict]:
-    """메뉴를 넣을 수 있는 카테고리 (ai·best 제외). [더미] 더미 콘텐츠에서 가져온다.
-
-    TODO: categories 테이블(db/fbgrowth_schema.sql)에서 카테고리를 읽는다.
-    """
-
-    return [{"id": c["id"], "name": c["name"]} for c in dummy.content_item("categories")
-            if c["id"] not in NON_MENU_CATEGORIES]
+    """메뉴를 넣을 수 있는 카테고리를 저장소에서 가져온다."""
+    return request.app.state.shop.menu_categories()
 
 
 class MenuIn(BaseModel):
@@ -35,23 +26,38 @@ class MenuIn(BaseModel):
 
 
 @router.get("/menus")
-async def menus():
-    """[더미] 메뉴 목록과 카테고리."""
-    # 관리자 메뉴 저장소가 구현되기 전까지는 더미 응답을 돌려준다.
-    return dummy.admin_menus()
+async def menus(request: Request):
+    """관리자 화면에 필요한 카테고리와 메뉴 목록을 돌려준다."""
+    return {"categories": menu_categories(request), "menus": request.app.state.shop.menus()}
 
 
 @router.put("/menus/{menu_id}")
 async def save_menu(menu_id: str, body: MenuIn, request: Request):
-    """메뉴 등록·수정(가중치·품절 포함). [더미] 저장하지 않고 보낸 값을 반영한 메뉴를 돌려준다.
+    """새 메뉴는 필수값을 확인하고, 기존 메뉴는 받은 값만 저장한다."""
+    shop = request.app.state.shop
+    # 부분 수정에서는 생략한 필드를 유지하고, 명시적인 null도 저장하지 않는다.
+    fields = body.model_dump(exclude_unset=True, exclude_none=True)
+    existing = shop.menu(menu_id)
 
-    TODO: cat 이 menu_categories() 에 없으면 422.
-    TODO: 없는 id 면 새로 만들고(name·cat·price 필수, 아니면 422), 있으면 보낸 필드만 수정: shop.save_menu(menu_id, fields).
-    """
-    # 관리자 메뉴 저장소가 구현되기 전까지는 더미 응답을 돌려준다(저장하지 않음).
-    return dummy.menu_saved(menu_id, body.model_dump(exclude_none=True))
+    # 새 메뉴 등록 때만 필수값을 검사해 부분 수정 요청을 막지 않는다.
+    if existing is None:
+        required = ("name", "cat", "price")
+        missing = [field for field in required if field not in fields]
+        if missing:
+            labels = {"name": "메뉴 이름", "cat": "카테고리", "price": "가격"}
+            missing_labels = ", ".join(labels[field] for field in missing)
+            raise HTTPException(422, f"새 메뉴 등록에 필요한 항목을 입력해 주세요: {missing_labels}.")
+
+    # 카테고리는 새 메뉴 등록과 카테고리 변경 때 실제 메뉴 카테고리인지 확인한다.
+    if "cat" in fields and fields["cat"] not in {category["id"] for category in menu_categories(request)}:
+        raise HTTPException(422, "존재하지 않는 메뉴 카테고리입니다.")
+
+    return shop.save_menu(menu_id, fields)
 
 
 @router.delete("/menus/{menu_id}", status_code=204)
 async def delete_menu(menu_id: str, request: Request):
-    """메뉴 삭제. [더미] 아무것도 지우지 않는다. TODO: shop.delete_menu(menu_id), 없으면 404."""
+    """메뉴를 삭제하고, 없는 메뉴면 404를 돌려준다."""
+    if not request.app.state.shop.delete_menu(menu_id):
+        raise HTTPException(404, "메뉴를 찾을 수 없습니다.")
+    return None

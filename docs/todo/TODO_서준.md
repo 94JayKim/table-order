@@ -20,7 +20,7 @@
 |---|---|---|---|
 | 0 | 0. 개발 흐름 확인 (테스트 버튼) | `POST /api/dev/db-test` (개발 전용) | 확인 전 |
 | 1 | 1. 메뉴 저장소 + 손님 메뉴 목록 | `GET /api/v1/menus` | 구현·테스트 미실행 |
-| 2 | 2. 관리자 메뉴 관리 | `GET·POST·PATCH·DELETE /api/v1/owner/menus` | 더미 |
+| 2 | 2. 관리자 메뉴 관리 | `GET·POST·PATCH·DELETE /api/v1/owner/menus` | 구현·테스트 미실행 |
 | 3 | 3. 카테고리 | `GET /api/v1/categories`, `POST·PATCH·DELETE /api/v1/owner/categories` | 더미 |
 | 4 | 4. 추천 가중치 | `GET·PATCH /api/v1/owner/menus`, `PATCH …/menus/weights` | 더미 |
 | 5 | 5. 정리 | `/api/content`, `B/seed/content.json` 삭제 | 마지막 사람이 처리 |
@@ -104,7 +104,7 @@ UI(주문 화면 · 카테고리 탭 · 메뉴 카드) → U/views/order.py → 
 
 ---
 
-## 2. 관리자 메뉴 관리 (더미)
+## 2. 관리자 메뉴 관리 (구현, 테스트 미실행)
 
 ### 2-1. `GET /api/v1/owner/menus`, `POST /api/v1/owner/menus`, `PATCH /api/v1/owner/menus/{menuId}`, `DELETE /api/v1/owner/menus/{menuId}`
 

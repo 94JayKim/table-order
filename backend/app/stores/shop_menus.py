@@ -41,12 +41,53 @@ class MenuMixin:
         names = {"category_id": "cat", "description": "desc", "is_soldout": "soldout"}
         return {names.get(key, key): value for key, value in fields.items()}
 
+    def _seed_categories(self) -> None:
+        """카테고리 테이블이 있으면 메뉴 시드에 필요한 기본 카테고리를 추가한다."""
+        if not self.db.columns("categories"):
+            return
+
+        seed_path = Path(__file__).resolve().parent.parent / "seed" / "content.json"
+        with open(seed_path, mode="r", encoding="utf-8") as f:
+            categories = json.load(f)["categories"]
+
+        for sort, category in enumerate(categories):
+            colors = category.get("colors", ["#a29bfe", "#4b3f9e"])
+            # 기존 카테고리는 관리자 설정을 보존하고, 없는 카테고리만 메뉴 FK 전에 추가한다.
+            self.db.run(
+                "INSERT INTO categories "
+                "(id, name, icon, color_from, color_to, is_virtual, sort_order) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING",
+                (
+                    category["id"], category["name"], category.get("icon", "🍽️"),
+                    colors[0], colors[1], category["id"] in ("ai", "best"), sort,
+                ),
+            )
+
+    def menu_categories(self) -> list[dict]:
+        """메뉴를 넣을 수 있는 카테고리를 DB 표시 순서로 돌려준다."""
+        if not self.db.columns("categories"):
+            # SQLite 개발 DB에는 categories 테이블이 아직 없어서 기존 콘텐츠를 사용한다.
+            seed_path = Path(__file__).resolve().parent.parent / "seed" / "content.json"
+            with open(seed_path, mode="r", encoding="utf-8") as f:
+                categories = json.load(f)["categories"]
+            return [
+                {"id": category["id"], "name": category["name"]}
+                for category in categories
+                if category["id"] not in ("ai", "best")
+            ]
+
+        return self.db.all(
+            "SELECT id, name FROM categories WHERE is_virtual = ? ORDER BY sort_order, id",
+            (False,),
+        )
 
     def seed_menus(self) -> None:
         """메뉴 테이블이 비어 있을 때만 seed/menu.json 을 넣는다.
 
         TODO: menus 가 비어 있으면 seed/menu.json 을 읽어 save_menu(id, menu, sort=순번) 로 넣는다."""
         if not self.menus():
+            # Postgres의 menus.category_id 외래 키가 있으므로 카테고리를 먼저 준비한다.
+            self._seed_categories()
             seed_path = Path(__file__).resolve().parent.parent / "seed" / "menu.json"
             with open(seed_path, mode="r", encoding="utf-8") as f:
                 menus = json.load(f)

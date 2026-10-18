@@ -6,6 +6,13 @@ from test_sooyong_today_orders import open_dashboard, server
 from app.services.grades import KST
 
 
+def save_menu(server, menu_id, name, category="anju", price=14000):
+    """테스트 메뉴도 메뉴 저장소를 통해 저장한다."""
+    return server.app.state.shop.save_menu(
+        menu_id, {"cat": category, "name": name, "price": price}
+    )
+
+
 def html_of(screen):
     return "\n".join(element.value for element in screen.get("html"))
 
@@ -30,8 +37,7 @@ def prepare_history(server):
     member = server.app.state.members.upsert_login("regular-screen", "주문 기억 손님")
     db.run("UPDATE members SET visit_count=5 WHERE id=?", (member["id"],))
     for menu_id, name in (("screen-fish", "DB 먹태"), ("screen-egg", "DB 계란말이")):
-        db.run("INSERT INTO menus (id, category_id, name, price) VALUES (?, ?, ?, ?)",
-               (menu_id, "anju", name, 14000))
+        save_menu(server, menu_id, name)
     for days in range(6):
         is_fish = days in (1, 2, 3, 4)
         at = datetime.now(timezone.utc) - timedelta(days=days)
@@ -112,7 +118,7 @@ def test_three_db_examples_are_recommendation_cards(server, monkeypatch):
 
     db = server.app.state.db
     for menu_id, name in (("a1", "예시 먹태"), ("a2", "예시 골뱅이"), ("a4", "예시 계란말이"), ("a8", "예시 파전")):
-        db.run("INSERT INTO menus (id, category_id, name, price) VALUES (?, ?, ?, ?)", (menu_id, "anju", name, 14000))
+        save_menu(server, menu_id, name)
     seed_regular_examples(db, datetime.now(KST).date())
     screen = open_recommendations(monkeypatch)
     html = html_of(screen)
@@ -194,8 +200,7 @@ def test_preference_api_failure_does_not_break_original_recommendations(server, 
 def test_ten_ordering_regulars_are_all_visible_without_truncating(server, monkeypatch):
     """방문 횟수만 확인되는 단골도 빠뜨리지 않고 열 팀 모두 표시하는지 확인한다."""
     db = server.app.state.db
-    db.run("INSERT INTO menus (id, category_id, name, price) VALUES (?, ?, ?, ?)",
-           ("ten-screen", "anju", "단골의 오늘 메뉴", 14000))
+    save_menu(server, "ten-screen", "단골의 오늘 메뉴")
     for index in range(10):
         member = server.app.state.members.upsert_login(f"screen-ten-{index}", f"열 팀 단골 {index}")
         db.run("UPDATE members SET visit_count=? WHERE id=?", (5 + index, member["id"]))
@@ -220,8 +225,7 @@ def test_varied_regulars_and_one_preference_suggestion_use_separate_cards(server
 
     db = server.app.state.db
     for menu_id, name in (("a1", "먹태"), ("a2", "골뱅이"), ("a4", "계란말이"), ("a8", "파전")):
-        db.run("INSERT INTO menus (id, category_id, name, price) VALUES (?, ?, ?, ?)",
-               (menu_id, "anju", name, 14000))
+        save_menu(server, menu_id, name)
     seed_regular_examples(db, datetime.now(KST).date())
     member = server.app.state.members.upsert_login("varied-screen", "여러 메뉴 단골")
     db.run("UPDATE members SET visit_count=8 WHERE id=?", (member["id"],))

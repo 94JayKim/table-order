@@ -72,7 +72,8 @@ def test_customer_screen_keeps_conditions_until_save_and_does_not_write_on_edit(
     app.button(key="rule_reset").click().run()
     assert not app.exception
     assert app.number_input(key="rule_regular").value == 5
-    assert app.session_state["grade_rule"]["regular"] == 5
+    assert app.session_state["grade_rule_preview"]["regular"] == 5
+    assert app.session_state["grade_rule"]["regular"] == 8
     assert app.session_state["repo"].customer_grade_rules()["regular"] == 8
 
 

@@ -15,6 +15,7 @@ from app.stores.db import Database
 from app.stores.dev_test import DevTestStore
 from app.stores.external_context import ExternalContextStore
 from app.stores.grade_rules import GradeRuleStore
+from app.stores.ai_content import AiContentStore
 from app.stores.login_sessions import LoginSessionStore
 from app.stores.members import MemberStore
 from app.stores.roulette_prizes import RoulettePrizeStore
@@ -47,6 +48,7 @@ def create_app(settings: Settings | None = None, sms_clock=None, sms_http=None) 
     app.state.coupons = CouponStore(db)
     app.state.tablet_logins = TabletLoginStore(db, settings.jwt_expire_minutes)
     app.state.store_info = StoreInfoStore(db, settings)
+    app.state.ai_content = AiContentStore(db)
     app.state.shop = ShopStore(db)
     app.state.roulette_prizes = RoulettePrizeStore(db)
     app.state.sms_logs = SmsLogStore(db)

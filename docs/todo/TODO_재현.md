@@ -22,7 +22,7 @@
 | 1 | 1. 매장 정보 | `GET /api/v1/store` | 완료 |
 | 2 | 2. 주문 저장 · 테이블 누적 · 주문 이력 | `POST /api/v1/orders`, `GET /api/v1/tables/{id}/orders`, `GET /api/v1/owner/orders` | 완료 |
 | 3 | 3. 룰렛 · 쿠폰함 | `roulette/status·plays`, `tables/{n}/logins/prize`, `coupons`, `tables/{n}/coupons`, `POST /api/orders`(쿠폰 사용) | 완료 |
-| 4 | 4. AI 질문 · 추천 · 날씨 · 규칙 | `ai/questions`, `ai/recommendations`, `weather/current`, `ai/recommendation-rules` | 더미 |
+| 4 | 4. AI 질문 · 추천 · 날씨 · 규칙 | `ai/questions`, `ai/recommendations`, `weather/current`, `ai/recommendation-rules` | 완료(4-3 선택 제외) |
 
 **다른 팀원과 겹치는 지점**
 
@@ -265,9 +265,9 @@ UI(주문하기) → U/state/coupons.py pending_coupon_ids → create_order(coup
 
 ---
 
-## 4. AI 질문 · 추천 · 날씨 · 규칙 (더미)
+## 4. AI 질문 · 추천 · 날씨 · 규칙
 
-현재 구조: 질문·날씨·규칙은 `GET /api/content`(JSON 파일 `B/seed/content.json`)에서 한 번에 받고, **추천 조합 계산은 화면 코드**(`U/recommendations.py recommend_combos`)가 한다. 서버는 노출 기록만 받는다(`POST /api/recommendations`, 더미).
+현재 구조: 질문·날씨·규칙은 DB 기반의 개별 API에서 받고, **추천 조합 계산은 화면 코드**(`U/recommendations.py recommend_combos`)가 한다. 서버는 노출 기록을 `recommendation_events`에 저장한다(`POST /api/v1/ai/recommendations`, 기존 경로 별칭 유지).
 
 **단계로 나눠 진행한다**: ① 읽기 API 3개 ② 노출 기록 저장 ③ (선택) 추천 계산을 서버로.
 
@@ -275,7 +275,7 @@ UI(주문하기) → U/state/coupons.py pending_coupon_ids → create_order(coup
 
 **목표**: 질문(단계별 선택지), 현재 날씨, 추천 규칙을 DB 테이블(`quiz_questions`+`quiz_options`, `weather_types`+`weather_current`, `recommendation_rules`)에서 읽어 지금 화면이 받는 모양과 **똑같이** 돌려준다.
 
-**테스트 방법**: 새 `BT/test_ai_content.py` — 응답이 `B/seed/content.json`의 `quiz_questions`·`weather`·`rules`와 같은 키를 가진다 / 질문은 `sort_order` 순 / 옵션이 질문 아래로 묶임 / 날씨는 `{current, types:{코드:{label, icon}}}`. 화면: `python -m pytest user/test_ai_quiz.py user/test_recommendations.py -q` 통과.
+**테스트 방법**: 새 `BT/test_ai_content.py` — 응답이 `U/ai_quiz_data.py`·`U/recommendation_data.py`와 같은 모양이다 / 질문은 `sort_order` 순 / 옵션이 질문 아래로 묶임 / 날씨는 `{current, types:{코드:{label, icon}}}`. 화면: `python -m pytest user/test_ai_quiz.py user/test_recommendations.py -q` 통과.
 
 **중요 이론**
 
@@ -297,13 +297,13 @@ UI(AI 질문 시작) → U/views/ai.py → ctx.QUESTIONS/WEATHER/RULES ← U/use
 
 **상세 설명 / TODO**
 
-- [ ] 더미 주석처리: `/content`의 `quiz_questions`·`weather`·`rules` 항목은 `/api/content`에서 나오므로, 새 API로 옮긴 뒤 `B/seed/content.json`에서 **본인 키(`quiz_questions`, `weather`, `rules`)만** 지운다(다른 키는 서준·석원이 지움).
-- [ ] 초기 데이터: `U/ai_quiz_data.py`, `U/recommendation_data.py`와 `docs/db/`의 시드를 보고 테이블에 채우는 시드 코드를 `B/stores/ai_content.py`에 둔다(비어 있을 때만 채움).
-- [ ] 질문(`quiz_questions`)과 추천 규칙(`recommendation_rules`)의 **내용은 담당자가 직접 정한다.** 아래 4-4에서 방식을 먼저 고르고, 시드는 고른 방식에 필요한 질문·규칙 키만 채운다(지금 DB에는 질문 5개, 규칙 3키만 있고 `pairings` 등은 없음).
-- [ ] `B/services/weather.py`(신규): 외부 날씨 API 연동 전에는 `weather_current`의 값을 읽기만 한다. 성호가 이 함수를 가져다 쓰니 `current_weather() -> {code, label, icon}` 같은 단순한 이름으로 정하고 성호에게 알린다.
-- [ ] `U/user_repository.py`: `ENDPOINTS`·`_fetch_content`에서 본인 항목만 새 경로로 바꾼다. 서준(메뉴)·석원(룰렛·직원호출)도 같은 함수를 고치므로 **각자 자기 줄만** 바꾸고 PR을 작게 올린다.
+- [x] 더미 주석처리: `/content`의 `quiz_questions`·`weather`·`rules` 항목은 `/api/content`에서 나오므로, 새 API로 옮긴 뒤 `B/seed/content.json`에서 **본인 키(`quiz_questions`, `weather`, `rules`)만** 지운다(다른 키는 서준·석원이 지움).
+- [x] 초기 데이터: `U/ai_quiz_data.py`, `U/recommendation_data.py`를 시드 원본으로 읽어 테이블에 채우는 시드 코드를 `B/stores/ai_content.py`에 두었다(비어 있을 때만 채움).
+- [x] 질문(`quiz_questions`)과 추천 규칙(`recommendation_rules`)의 **내용은 담당자가 직접 정한다.** 4-4에서 A(규칙 기반 점수) 방식을 선택하고, 현재 화면의 8개 질문과 전체 추천 규칙을 시드했다.
+- [x] `B/services/weather.py`(신규): 외부 날씨 API 연동 전에는 `weather_current`의 값을 읽기만 하도록 `current_weather(store) -> {code, label, icon}`을 추가했다.
+- [x] `U/user_repository.py`: 질문·날씨·규칙·추천 기록만 새 `/api/v1/...` 경로로 바꾸고, 메뉴·룰렛·직원 호출 경로는 건드리지 않았다.
 
-### 4-2. `POST /api/v1/ai/recommendations` (추천 기록 저장 · 더미)
+### 4-2. `POST /api/v1/ai/recommendations` (추천 기록 저장)
 
 **목표**: 손님에게 추천 조합이 노출된 사실을 `recommendation_events`에 저장한다(관리자 AI 적중률의 분모). 지금 화면은 `POST /api/recommendations`로 이미 호출 중이다.
 
@@ -320,8 +320,8 @@ UI(추천 조합 카드 표시) → U/views/ai.py log_recommendation → ctx.REP
 
 **상세 설명 / TODO**
 
-- [ ] 더미 주석처리: `log_recommendation`의 `dummy.recommendation_logged()`, `B/dummy/recommend_data.py`의 `recommendation_logged`·`"POST /api/recommendations"` 줄.
-- [ ] `add_recommendation`, `recommendation_count` 구현(파일 안 TODO). 새 경로 `/api/v1/ai/recommendations`는 `B/routers/ai.py`에 같은 함수를 연결한다(기존 경로 별칭 유지).
+- [x] 더미 주석처리: `log_recommendation`의 `dummy.recommendation_logged()`, `B/dummy/recommend_data.py`의 `recommendation_logged`·`"POST /api/recommendations"` 줄.
+- [x] `add_recommendation`, `recommendation_count` 구현(파일 안 TODO). 새 경로 `/api/v1/ai/recommendations`를 `B/routers/ai.py`에 연결하고 기존 경로 별칭도 유지했다.
 - [ ] `orders.recommendation_event_id`로 주문과 추천을 연결하는 부분은 4-3에서.
 
 ### 4-3. (선택) 추천 조합 계산을 서버로
@@ -349,6 +349,6 @@ UI(추천 조합 카드 표시) → U/views/ai.py log_recommendation → ctx.REP
 
 **고르는 기준(제안)**: 시연 안정성이 최우선이면 B에서 시작해 A로 확장하고, C는 A·B 위에 "추천 이유 문구"만 붙이는 선택 기능으로 둔다.
 
-- [ ] 담당자가 방식(A/B/C 중)을 정해 PR 설명에 적는다.
-- [ ] 고른 방식에 필요한 질문과 규칙 키를 정하고, 시드와 `U/ai_quiz_data.py`·`U/recommendation_data.py`를 같은 내용으로 맞춘다. 규칙이 가리키는 메뉴 id는 `menus` 테이블에 실제로 있는 id만 쓴다.
-- [ ] 질문 수를 줄이면(예: 8단계 → 3~5단계) `U/ai_quiz_data.py`의 질문 목록, 화면의 단계 표시, `user/test_ai_quiz.py`를 함께 맞춘다.
+- [x] 담당자가 방식 A(규칙 기반 점수)를 선택했다.
+- [x] 고른 방식에 필요한 질문과 규칙 키를 정하고, 시드와 `U/ai_quiz_data.py`·`U/recommendation_data.py`를 같은 내용으로 맞췄다. 규칙이 가리키는 메뉴 id는 기존 `menus` 시드의 id를 사용한다.
+- [x] 질문 수는 기존 8단계를 유지해 화면의 단계 표시와 `user/test_ai_quiz.py`를 변경하지 않았다.

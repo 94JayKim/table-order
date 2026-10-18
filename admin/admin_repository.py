@@ -38,6 +38,8 @@ ENDPOINTS = {
     "stats": "/admin/api/stats",
     "calls": "/admin/api/calls",
     "sms": "/admin/api/marketing/sms",        # /usage /preview /send /logs
+    "opportunities": "/admin/api/marketing/opportunities",  # DB 기반 마케팅 추천 카드
+    "growth_performance": "/admin/api/marketing/growth-performance",  # DB 기반 AI 도입 전후 매출 성과
     "chat": "/admin/api/marketing/chat/sessions",  # AI 챗봇 대화방 (/{id}, /{id}/messages)
     "opt_out": "/admin/api/members/{id}/opt-out",
 }
@@ -149,6 +151,14 @@ class ApiBackend:
 
     def sms_logs(self):
         return api.get(f"{ENDPOINTS['sms']}/logs", self.token)
+
+    def opportunities(self, round_no=0):
+        """서버가 DB 자료로 계산한 네 장의 마케팅 추천을 읽는다."""
+        return api.get(ENDPOINTS["opportunities"], self.token, params={"round": round_no})
+
+    def growth_performance(self):
+        # backend/app/services/growth_performance.py가 orders·members DB를 읽어 계산한다.
+        return api.get(ENDPOINTS["growth_performance"], self.token)
 
     # ---- AI 챗봇: 대화방·메시지는 서버가 DB 에 저장한다 ----
     def chat_sessions(self):
@@ -460,6 +470,18 @@ class AdminRepository:
         from dashboard_stats import menu_alerts
 
         return menu_alerts(self.menus(), self.stats()["popular_menus"])
+
+    def opportunities(self, round_no: int = 0) -> dict:
+        """API·더미 백엔드에서 같은 추천 페이지 응답을 받는다."""
+        return self.backend.opportunities(round_no)
+
+    def growth_performance(self, rule: dict | None = None) -> dict:
+        """API는 DB 계산 결과를, 더미는 같은 공식의 화면 계산 결과를 사용한다."""
+        if self.source == "api":
+            return self.backend.growth_performance()
+        # 순환 import를 피하려고 더미 화면에서 호출할 때만 계산 함수를 가져온다.
+        from admin.views.growth_performance import growth_summary
+        return growth_summary(self.orders(), self.members(rule))
 
     # ---- 직원 호출 ----
     def calls(self) -> list[dict]:

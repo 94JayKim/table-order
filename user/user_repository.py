@@ -30,13 +30,17 @@ from shared import api
 ENDPOINTS = {
     "store": "/api/v1/store",                    # {name, branch, tables}
     "menus": "/api/menus",                    # [메뉴...]
-    "content": "/api/content",                # {categories, staff_calls, quiz_questions, weather, rules}
+    "content": "/api/content",                # {categories, staff_calls} (기존 묶음 경로)
+    "questions": "/api/v1/ai/questions",      # 추천 질문·선택지
+    "weather": "/api/v1/weather/current",    # 현재 날씨
+    "rules": "/api/v1/ai/recommendation-rules",  # 추천 규칙
     "roulette": "/api/v1/roulette/prizes",    # 관리자 설정과 같은 DB의 룰렛 칸
     "orders": "/api/orders",                  # POST
+    "table_orders": "/api/v1/tables/{table_no}/orders",  # GET
     "calls": "/api/calls",                    # POST
-    "recommendations": "/api/recommendations",  # POST (추천 노출 기록)
+    "recommendations": "/api/v1/ai/recommendations",  # POST (추천 노출 기록)
 }
-CONTENT_KEYS = ("categories", "staff_calls", "quiz_questions", "weather", "rules")
+CONTENT_KEYS = ("categories", "staff_calls")
 MODES = ("dummy", "api", "auto")
 
 
@@ -99,6 +103,9 @@ class DummyRepository:
     def create_order(self, table_no, lines, total, token, coupon_ids=()):
         return None
 
+    def table_orders(self, table_no, token):
+        return None
+
     def create_call(self, table_no, items):
         return None
 
@@ -111,9 +118,12 @@ class DummyRepository:
 
 @st.cache_data(ttl=10, show_spinner=False)
 def _fetch_content() -> dict:
-    """서버에서 한 번에 가져온다 (10초 캐시: 관리자가 바꾼 가격·품절이 곧 반영된다)."""
+    """서버에서 화면 콘텐츠를 가져온다 (10초 캐시: 관리자가 바꾼 값이 곧 반영된다)."""
+    content = api.get(ENDPOINTS["content"])
     data = {"store": api.get(ENDPOINTS["store"]), "menus": api.get(ENDPOINTS["menus"]),
-            "content": api.get(ENDPOINTS["content"]), "roulette_prizes": api.get(ENDPOINTS["roulette"])}
+            "content": content, "questions": api.get(ENDPOINTS["questions"]),
+            "weather": api.get(ENDPOINTS["weather"]), "rules": api.get(ENDPOINTS["rules"]),
+            "roulette_prizes": api.get(ENDPOINTS["roulette"])}
     missing = [k for k in CONTENT_KEYS if k not in data["content"]]
     if missing:
         raise api.ApiError(502, f"서버 응답에 {missing} 가 없습니다.")
@@ -138,12 +148,15 @@ class ApiRepository:
         c = data["content"]
         return Content(store=data["store"], categories=c["categories"], menu=menu,
                        roulette_prizes=data["roulette_prizes"], staff_calls=c["staff_calls"],
-                       quiz_questions=c["quiz_questions"], weather=c["weather"], rules=c["rules"], source="api")
+                       quiz_questions=data["questions"], weather=data["weather"], rules=data["rules"], source="api")
 
     def create_order(self, table_no, lines, total, token, coupon_ids=()):
         r = server.safe_call(api.post, ENDPOINTS["orders"], token,
                              json={"table_no": table_no, "lines": lines, "total": total, "coupon_ids": list(coupon_ids)})
         return r["no"] if r else None
+
+    def table_orders(self, table_no, token):
+        return server.table_orders(token, table_no)
 
     def create_call(self, table_no, items):
         r = server.safe_call(api.post, ENDPOINTS["calls"], None, json={"table_no": table_no, "items": items})
@@ -179,6 +192,9 @@ class AutoRepository:
 
     def create_order(self, *a, **kw):
         return self._api.create_order(*a, **kw) if self.source == "api" else None
+
+    def table_orders(self, *a, **kw):
+        return self._api.table_orders(*a, **kw) if self.source == "api" else None
 
     def create_call(self, *a, **kw):
         return self._api.create_call(*a, **kw) if self.source == "api" else None

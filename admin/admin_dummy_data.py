@@ -6,6 +6,7 @@
 import copy
 import random
 import sys
+from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -36,6 +37,7 @@ MENUS = [
     _menu("a2", "anju", "골뱅이 소면 무침 (보통맛)", 17000, spicy=2),
     _menu("a3", "anju", "직화 무뼈닭발 (아주 매운맛)", 18000, spicy=3),
     _menu("a4", "anju", "계란말이", 10000),
+    _menu("a8", "anju", "해물파전", 15000),
     _menu("a11", "anju", "노가리 구이", 9000, soldout=True),
     _menu("s1", "soup", "나가사키 짬뽕탕", 16000, spicy=2),
     _menu("s2", "soup", "어묵탕", 12000),
@@ -80,15 +82,19 @@ class DummyBackend:
         self.categories_ = [dict(c) for c in CATEGORIES]
         self.roulette_ = copy.deepcopy(ROULETTE_PRIZES)
         self.members_ = []
-        for i in range(1, 61):
+        # 추천 화면이 작은 표본에 갇히지 않도록 가입·방문 속성이 다른 회원 1,000명을 만든다.
+        for i in range(1, 1001):
+            has_phone = r.random() < 0.85
             self.members_.append({
                 "id": i, "nickname": f"손님{i:02d}", "gender": r.choice(["남", "여"]),
                 # 기존 20대 미만 더미 고객은 성인 연령대 네 구간에 고르게 다시 분산한다.
                 # 주문이 이 회원 id와 연결되므로 회원별 주문·매출도 같은 연령대로 자동 귀속된다.
                 "birth_year": r.choice([2002, 1995, 1986, 1974]),
+                "birthday": f"{r.randint(1, 12):02d}{r.randint(1, 28):02d}",
                 "visit_count": r.choice([1, 1, 1, 2, 2, 3, 4, 5, 6, 8, 12]),
                 "last_visit": TODAY - timedelta(days=r.choice([0, 1, 2, 3, 5, 8, 14, 21, 35, 50, 70, 95, 130])),
-                "marketing_consent": r.random() < 0.7, "opted_out": False})
+                "phone": "010-0000-0000" if has_phone else None,
+                "marketing_consent": r.random() < 0.7, "opted_out": r.random() < 0.05})
         self.orders_ = []
         for i in range(1, DUMMY_ORDER_COUNT + 1):
             picks = r.sample([m for m in MENUS if not m["soldout"]], r.randint(2, 4))
@@ -172,13 +178,81 @@ class DummyBackend:
     def members(self, rule: dict) -> dict:
         return {"rule": rule, "members": [{
             "id": m["id"], "nickname": m["nickname"], "gender": m["gender"], "age_group": _age_group(m["birth_year"]),
+            "birthday": m["birthday"],
             "visit_count": m["visit_count"], "last_visit_at": _iso(datetime.combine(m["last_visit"], datetime.min.time(), timezone.utc)),
-            "marketing_consent": m["marketing_consent"], "opted_out": m["opted_out"], "has_phone": m["marketing_consent"],
+            "marketing_consent": m["marketing_consent"], "opted_out": m["opted_out"], "has_phone": bool(m["phone"]),
             "grade": _grade(m["visit_count"], m["last_visit"], rule)} for m in self.members_]}
 
     def orders(self) -> list:
         nick = {m["id"]: m["nickname"] for m in self.members_}
         return [{**o, "nickname": nick.get(o["member_id"])} for o in self.orders_]
+
+    def regular_preferences(self) -> list[dict]:
+        """더미 주문만 근거로 오늘 매장에 온 2회 이상 방문 손님의 응대 제안을 만든다."""
+        members = {member["id"]: member for member in self.members_ if member["visit_count"] >= 2}
+        by_member: dict[int, list[dict]] = defaultdict(list)
+        for order in self.orders_:
+            if order["member_id"] in members:
+                by_member[order["member_id"]].append(order)
+
+        rows = []
+        for member_id, orders in by_member.items():
+            today_orders = [order for order in orders if order["ts"][:10] == TODAY.isoformat()]
+            history = [order for order in orders if order["ts"][:10] < TODAY.isoformat()]
+            if not today_orders or not history:
+                continue
+            latest = max(today_orders, key=lambda order: (order["ts"], order["id"]))
+            previous = max(history, key=lambda order: (order["ts"], order["id"]))
+            member = members[member_id]
+            previous_day = date.fromisoformat(previous["ts"][:10])
+            previous_menus = [line["name"] for line in previous["lines"]]
+            today_menus = [line["name"] for line in latest["lines"]]
+            menu_counts = Counter(line["name"] for order in history for line in order["lines"])
+            favorite = menu_counts.most_common(1)[0][0] if menu_counts else today_menus[0]
+            visit_days = {order["ts"][:10] for order in orders
+                          if order["ts"][:10] >= (TODAY - timedelta(days=6)).isoformat()}
+            birthday = member["birthday"] == TODAY.strftime("%m%d")
+            age = TODAY.year - member["birth_year"] if birthday else None
+            gap = (TODAY - previous_day).days
+            previous_visit = (f"{previous_day.month}월 {previous_day.day}일 {previous['table_no']}번 테이블에서 "
+                              f"{', '.join(previous_menus)}을(를) 주문")
+
+            if birthday:
+                event = "birthday"
+                reason = f"오늘은 {member['nickname']}님의 만 {age}세 생일이고, {member['visit_count']}번째 방문입니다."
+                action = f"생일 축하와 함께 자주 드신 {favorite}와 어울리는 작은 서비스를 드려 보세요."
+                note = f"{member['nickname']}님, 생일 축하드립니다! 자주 드시던 {favorite}도 기억하고 있어요."
+            elif len(visit_days) >= 3:
+                event = "frequent_week"
+                reason = f"최근 7일 동안 {len(visit_days)}일 방문했습니다. 자주 찾아주는 사실을 알아봐 주기 좋은 순간입니다."
+                action = f"자주 드신 {favorite}와 어울리는 작은 서비스를 드려 보세요."
+                note = f"{member['nickname']}님, 이번 주에 자주 찾아주셔서 감사합니다. 작은 서비스를 준비했어요."
+            elif gap >= 14:
+                event = "long_time_return"
+                reason = f"{previous_visit}한 뒤 {gap}일 만에 다시 방문했습니다."
+                action = f"반가운 인사와 함께 {favorite} 취향에 맞는 작은 서비스를 제안하세요."
+                note = f"{member['nickname']}님, {gap}일 만에 다시 뵈니 정말 반갑습니다!"
+            else:
+                event = "return_visit"
+                reason = f"{previous_visit}했고 오늘 다시 방문했습니다."
+                action = f"오늘 주문한 {today_menus[0]}와 어울리는 작은 서비스를 드리며 반갑게 인사하세요."
+                note = f"{member['nickname']}님, 다시 찾아주셔서 감사합니다. 지난 방문도 기억하고 있어요!"
+
+            rows.append({
+                "member_id": member_id, "nickname": member["nickname"], "visit_count": member["visit_count"],
+                "favorite_menu": None, "preference_rate": None, "changed_today": None,
+                "context": f"로그인 기록 기준 {member['visit_count']}번째 방문입니다. 오늘 주문: {', '.join(today_menus)}.",
+                "today_table": latest["table_no"], "today_menus": today_menus,
+                "delivery_menu": today_menus[0], "current_order_id": latest["id"], "note": note,
+                "visit_context": (f"로그인 기록 기준 {member['visit_count']}번째 방문입니다. "
+                                  f"오늘 주문: {', '.join(today_menus)}. 현재 {latest['table_no']}번 테이블입니다."),
+                "visit_note": note, "grade": _grade(member["visit_count"], member["last_visit"], self.customer_grade_rules()),
+                "previous_visit": previous_visit, "previous_table": previous["table_no"],
+                "previous_menus": previous_menus, "weekly_visits": len(visit_days),
+                "is_birthday": birthday, "age": age, "weather_text": "", "special_event": event,
+                "care_reason": reason, "service_suggestion": action, "most_ordered_menu": favorite,
+            })
+        return sorted(rows, key=lambda row: (row["today_table"], row["member_id"]))
 
     # ---- 직원 호출 ------------------------------------------------------------
     def calls(self) -> list:
@@ -217,18 +291,28 @@ class DummyBackend:
                        "definition": "AI 조합이 포함된 주문 수 / 추천이 노출된 횟수 (임시 기준)"}}
 
     def opportunities(self, round_no: int = 0) -> dict:
-        """서버가 없어도 기존 화면 규칙으로 같은 추천 응답 모양을 만든다."""
-        # 실행 시점에 가져와 admin_repository와의 순환 import를 피한다.
-        from admin.marketing.context import build_marketing_context
-        from admin.marketing.recommendations import pick_recommendations, recommend
-        from admin_repository import AdminRepository
+        """서버 없이도 1,000명 더미의 행동·취향으로 같은 추천 엔진을 실행한다."""
+        from shared.opportunity_engine import build_context, pick_recommendations, recommend
 
-        cards, page, pages = pick_recommendations(
-            recommend(build_marketing_context(AdminRepository(self), self.customer_grade_rules())), round_no)
-        return {"items": cards, "page": page, "pages": pages}
+        rule = self.customer_grade_rules()
+        member_rows = [{**member, "grade": _grade(member["visit_count"], member["last_visit"], rule),
+                        "age_group": _age_group(member["birth_year"]), "has_phone": bool(member["phone"]),
+                        "last_visit_at": member["last_visit"]} for member in self.members_]
+        menu_rows = [{"name": menu["name"], "category": menu["cat"], "spicy": menu["spicy"],
+                      "soldout": menu["soldout"], "weight": menu["weight"]} for menu in self.menus_]
+        context = build_context(member_rows, self.orders_, menu_rows, self.stats(rule), TODAY)
+        result = pick_recommendations(recommend(context), round_no)
+        result["summary"] = {
+            "members": {key: context["members"][key] for key in
+                        ("total", "grades", "sendable", "opted_out", "pool_by_grade")},
+            "orders": {key: context["orders"][key] for key in
+                       ("count", "revenue", "avg", "peak_hours", "top_items")},
+        }
+        return result
 
     # ---- 문자 발송: 서버 SmsService 와 같은 규칙·같은 JSON 으로 흉내만 낸다 (실제 전송 없음) ----------------------
-    SMS_LIMIT = {"SMS": 100, "LMS": 20}
+    # 1,000명 시연 데이터에서도 등급 전체를 선택해 발송 흐름을 확인할 수 있는 더미 한도다.
+    SMS_LIMIT = {"SMS": 2000, "LMS": 2000}
     STORE_NAME = "역전할머니맥주"
     OPT_OUT_NUMBER = "080-000-0000"
     GRADE_RULE = {"repeat": 2, "regular": 5, "dormant": 30}
@@ -249,7 +333,7 @@ class DummyBackend:
         self.sms_logs_.reverse()  # 서버처럼 최신 기록이 먼저
 
     def _sms_targets(self, grades, member_ids=None):
-        return [m for m in self.members_ if m["marketing_consent"] and not m["opted_out"]
+        return [m for m in self.members_ if m["phone"] and m["marketing_consent"] and not m["opted_out"]
                 and _grade(m["visit_count"], m["last_visit"], self.GRADE_RULE) in grades
                 and (member_ids is None or m["id"] in member_ids)]
 

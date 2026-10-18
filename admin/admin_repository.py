@@ -413,10 +413,11 @@ class AdminRepository:
 
     # ---- 고객 / 주문 / 통계 ----
     def regular_preferences(self) -> list[dict]:
-        """마케팅 AI 추천에서 쓸 실제 DB의 오늘 주문한 단골 정보를 읽는다."""
-        # 더미 화면에서 실제 손님의 취향을 알고 있는 것처럼 꾸며 보여주지 않는다.
+        """마케팅 AI 추천에서 쓸 실제 DB의 오늘 주문한 2회 이상 방문 고객을 읽는다."""
+        # 더미는 admin_dummy_data의 1,000명 주문으로 시연하고, API 모드는 아래 DB 경로를 그대로 읽는다.
+        # 실제 DB 연결: backend/app/stores/customer_notes.py -> members/orders/order_items/menus
         if self.source != "api":
-            return []
+            return self.backend.regular_preferences()
         return api.get("/admin/api/marketing/regular-preferences", self.backend.token)["preferences"]
 
     def customer_grades(self, rule: dict | None = None) -> dict:
@@ -437,9 +438,12 @@ class AdminRepository:
         rows = self.backend.members(rule if rule is not None else self.customer_grade_rules())["members"]
         return pd.DataFrame([{
             "customer_id": m["id"], "닉네임": m["nickname"], "성별": m["gender"], "연령대": m["age_group"],
-            "방문 횟수": m["visit_count"], "마지막 방문일": _kst_date(m["last_visit_at"]),
-            "마케팅 수신 동의": m["marketing_consent"], "수신거부": m["opted_out"], "등급": m["grade"]} for m in rows],
-            columns=["customer_id", "닉네임", "성별", "연령대", "방문 횟수", "마지막 방문일", "마케팅 수신 동의", "수신거부", "등급"])
+            "생일": m.get("birthday"), "방문 횟수": m["visit_count"], "마지막 방문일": _kst_date(m["last_visit_at"]),
+            # 문자 발송 가능 수는 동의 여부뿐 아니라 실제 전화번호 보유 여부까지 확인해야 한다.
+            "전화번호 보유": m.get("has_phone", False), "마케팅 수신 동의": m["marketing_consent"],
+            "수신거부": m["opted_out"], "등급": m["grade"]} for m in rows],
+            columns=["customer_id", "닉네임", "성별", "연령대", "생일", "방문 횟수", "마지막 방문일", "전화번호 보유",
+                     "마케팅 수신 동의", "수신거부", "등급"])
 
     def orders(self) -> pd.DataFrame:
         rows = self.backend.orders()

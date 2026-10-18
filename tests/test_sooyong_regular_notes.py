@@ -141,8 +141,9 @@ def test_below_eighty_percent_still_shows_regular_without_claiming_preference(se
     ctx["regular_preferences"] = [{"nickname": "조건 미달", "preference_rate": .79}]
     assert marketing_ai.recommend(ctx) == original
     assert regular_preference_cards(ctx["regular_preferences"]) == []
-    # 더미 모드에서는 실제 DB의 손님처럼 꾸민 개인 추천을 만들지 않는다.
-    assert repo.regular_preferences() == []
+    # 더미 모드도 1,000명 시연 주문에서 근거를 찾고, API 모드와 같은 응답 구조를 유지한다.
+    dummy_preferences = repo.regular_preferences()
+    assert dummy_preferences and all(row["previous_visit"] and row["today_table"] for row in dummy_preferences)
     member = prepare_history(server)
     db = server.app.state.db
     # 테스트 메모리 DB의 과거 주문을 분산시켜 특정 취향을 단정할 수 없는 상황을 만든다.
@@ -159,16 +160,16 @@ def test_original_cards_and_pagination_are_preserved_above_added_preferences(ser
     prepare_history(server)
     screen = open_recommendations(monkeypatch)
     sections = [element.value for element in screen.get("html")]
-    original = next(html for html in sections if html.startswith('<div class="recs">'))
+    original = [html for html in sections if 'class="rec recommendation-card"' in html]
     addition = next(html for html in sections if 'class="recs regular-preferences"' in html)
-    assert original.count('class="rec"') == 4
-    assert "주문 기억 손님" not in original
+    assert len(original) == 4
+    assert all("주문 기억 손님" not in html for html in original)
     assert "주문 기억 손님" in addition and "80% 이상" in addition
-    assert sections.index(original) < sections.index(addition)
+    assert sections.index(original[0]) < sections.index(addition)
     screen.button(key="mk_rerecommend").click().run()
     assert not screen.exception
     sections = [element.value for element in screen.get("html")]
-    after = next(html for html in sections if html.startswith('<div class="recs">'))
+    after = [html for html in sections if 'class="rec recommendation-card"' in html]
     assert after != original
     assert next(html for html in sections if 'class="recs regular-preferences"' in html) == addition
 
@@ -178,7 +179,8 @@ def test_preference_api_failure_does_not_break_original_recommendations(server, 
     from pathlib import Path
 
     screen = open_recommendations(monkeypatch)
-    original = next(element.value for element in screen.get("html") if element.value.startswith('<div class="recs">'))
+    original = [element.value for element in screen.get("html")
+                if 'class="rec recommendation-card"' in element.value]
     ar._loaded_mtime = Path(ar.__file__).stat().st_mtime
 
     def unavailable(self):
@@ -187,7 +189,8 @@ def test_preference_api_failure_does_not_break_original_recommendations(server, 
     monkeypatch.setattr(ar.AdminRepository, "regular_preferences", unavailable)
     screen.run()
     assert not screen.exception
-    assert next(element.value for element in screen.get("html") if element.value.startswith('<div class="recs">')) == original
+    assert [element.value for element in screen.get("html")
+            if 'class="rec recommendation-card"' in element.value] == original
     assert any("단골 손님 정보를 불러오지 못했어요" in element.value for element in screen.info)
 
 

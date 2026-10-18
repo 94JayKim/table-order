@@ -22,6 +22,8 @@ def server():
     config = Settings(database_url="sqlite:///:memory:", app_env="dev", jwt_secret="x" * 32,
                       admin_token="admin-secret", _env_file=None)
     with TestClient(create_app(config)) as client:
+        # 서버가 처음 뜰 때 기본 메뉴가 들어가므로, 빈 DB를 전제로 한 이 테스트들을 위해 메뉴를 비운다.
+        client.app.state.db.run("DELETE FROM menus")
         api.set_client(client)
         try:
             yield client

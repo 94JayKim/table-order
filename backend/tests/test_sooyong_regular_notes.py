@@ -8,6 +8,13 @@ from app.core.settings import Settings
 from app.services.grades import KST, grade_of
 from tests.conftest import ADMIN
 
+
+@pytest.fixture(autouse=True)
+def _empty_menus(client):
+    """서버가 처음 뜰 때 기본 메뉴가 들어가므로, 빈 DB를 전제로 한 이 파일의 테스트를 위해 메뉴를 비운다."""
+    client.app.state.db.run("DELETE FROM menus")
+
+
 URL = "/admin/api/marketing/regular-preferences"
 
 

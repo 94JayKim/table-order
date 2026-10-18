@@ -4,9 +4,14 @@ from app.stores.db import Database
 from app.stores.members import now_iso
 
 # 운영 DB(Supabase)에는 docs/db/fbgrowth_schema.sql 로 이미 만들어져 있다. 아래는 로컬 SQLite·테스트용이다.
-SCHEMA = """CREATE TABLE IF NOT EXISTS external_context (
-    day TEXT PRIMARY KEY, weather_text TEXT NOT NULL DEFAULT '', event_text TEXT NOT NULL DEFAULT '',
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"""
+SCHEMA = """\
+CREATE TABLE IF NOT EXISTS external_context (
+    day          TEXT PRIMARY KEY,
+    weather_text TEXT NOT NULL DEFAULT '',
+    event_text   TEXT NOT NULL DEFAULT '',
+    updated_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
 
 
 class ExternalContextStore:

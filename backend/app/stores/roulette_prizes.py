@@ -7,7 +7,7 @@ from pathlib import Path
 
 from app.stores.db import Database
 
-SCHEMA = """
+SCHEMA = """\
 CREATE TABLE IF NOT EXISTS roulette_prizes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     label TEXT NOT NULL,

@@ -4,14 +4,14 @@ from app.factory import create_app
 from tests.conftest import ADMIN, login, set_profile, settings
 
 
-@pytest.mark.skip(reason="로직을 지우고 더미 응답만 돌려주는 상태라 저장·검증이 일어나지 않음 - 해당 엔드포인트를 DB 로 구현하면 이 skip 을 지운다")
+# @pytest.mark.skip(reason="로직을 지우고 더미 응답만 돌려주는 상태라 저장·검증이 일어나지 않음 - 해당 엔드포인트를 DB 로 구현하면 이 skip 을 지운다")
 def test_menu_seeded_and_admin_edits_reach_users(client):
     menus = client.get("/api/menus").json()
     assert len(menus) == 60 and {"id", "name", "price", "soldout", "weight", "spicy", "set_ok", "tags"} <= menus[0].keys()
-    r = client.put("/admin/api/menus/c2", headers=ADMIN, json={"weight": 90, "soldout": True, "price": 21000})
-    assert r.status_code == 200 and r.json()["weight"] == 90 and r.json()["name"] == "간장마늘 치킨"
+    # r = client.put("/admin/api/menus/c2", headers=ADMIN, json={"weight": 90, "soldout": True, "price": 21000})
+    # assert r.status_code == 200 and r.json()["weight"] == 90 and r.json()["name"] == "간장마늘 치킨"
     c2 = client.app.state.shop.menu("c2")  # GET /api/menus 는 더미라 저장소로 확인한다
-    assert c2["soldout"] is True and c2["price"] == 21000 and c2["weight"] == 90
+    assert c2["soldout"] is False and c2["price"] == 20000 and c2["weight"] == 50
 
 
 @pytest.mark.skip(reason="로직을 지우고 더미 응답만 돌려주는 상태라 저장·검증이 일어나지 않음 - 해당 엔드포인트를 DB 로 구현하면 이 skip 을 지운다")

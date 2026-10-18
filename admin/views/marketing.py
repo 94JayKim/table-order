@@ -289,16 +289,46 @@ def marketing_recommend_tab(repo):
     _render_regular_preferences(repo)
 
 
+def _server_chat(repo) -> list[dict]:
+    """서버 챗봇 대화를 불러온다. 브라우저를 새로고침해도 서버(DB)에 저장된 가장 최근 대화를 이어서 보여 준다."""
+    if "mk_chat_sid" not in ss:
+        sessions = repo.chat_sessions()
+        session = repo.chat_get(sessions[0]["id"]) if sessions else repo.chat_create()
+        ss["mk_chat_sid"], ss["mk_chat"] = session["id"], session["messages"]
+    return ss["mk_chat"]
+
+
 def marketing_chatbot_tab(repo):
-    ctx = marketing_ai.build_context(repo, ss["grade_rule"])
     sec_title("AI 챗봇", "궁금한 점을 물어보세요")
-    st.caption("🧪 지금은 규칙 기반 모의 응답이에요. 실제 AI(Claude API) 연동 지점은 `marketing_ai.py` 에 분리돼 있어요.")
-    chat = ss.setdefault("mk_chat", [{"role": "assistant", "content": marketing_ai.GREETING}])
+    server = repo.source == "api"
+    chat = None
+    if server:
+        try:
+            chat = _server_chat(repo)
+        except (repo_mod.api.ApiError, repo_mod.api.ApiUnavailable) as e:
+            st.warning(f"서버 챗봇을 쓸 수 없어 모의 응답으로 대신해요: {e}")
+            server = False
+    if server:
+        st.caption("대화는 서버에 저장돼요. 지난 대화는 새로고침해도 이어져요.")
+        if st.button("🆕 새 대화", key="mk_chat_new"):
+            ss.pop("mk_chat_sid", None)
+            ss.pop("mk_chat", None)
+            st.rerun()
+    else:
+        st.caption("🧪 서버에 연결되지 않아 규칙 기반 모의 응답이에요.")
+        chat = ss.setdefault("mk_chat_mock", [{"role": "assistant", "content": marketing_ai.GREETING}])
     # chat_input 을 컨테이너 안에 두면 화면 맨 아래에 고정되지 않고 패널 안에 놓인다(탭 전환 때 스크롤이 튀지 않는다).
     with st.container(border=True, key="mk_chat_panel"):
         box = st.container(height=380, border=False)
-        prompt = st.chat_input("예) 휴면 고객을 어떻게 다시 오게 할까?", key="mk_chat_input")
-        if prompt:
+        prompt = st.chat_input("예) 저번주 총 매출 알려줘", key="mk_chat_input")
+        if prompt and server:
+            try:
+                with st.spinner("답변을 만드는 중이에요..."):
+                    chat.extend(repo.chat_send(ss["mk_chat_sid"], prompt))
+            except (repo_mod.api.ApiError, repo_mod.api.ApiUnavailable) as e:
+                st.toast(f"답변을 받지 못했어요: {e}", icon="⚠️")
+        elif prompt:
+            ctx = marketing_ai.build_context(repo, ss["grade_rule"])
             chat.append({"role": "user", "content": prompt})
             chat.append({"role": "assistant", "content": marketing_ai.get_client().reply(prompt, ctx, chat[:-1])})
         for msg in chat:

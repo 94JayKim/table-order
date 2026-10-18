@@ -50,7 +50,6 @@ PR 전 최신 `upstream/dev`를 반영한 전체 테스트는 서버 **179 passe
 ```bash
 # 서버 (http://127.0.0.1:8000/docs)
 cd backend
-cp .env.example .env
 uv sync
 uv run fastapi dev main.py
 

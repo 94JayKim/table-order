@@ -19,7 +19,7 @@
 | 순서 | 할 일 | API | 상태 |
 |---|---|---|---|
 | 0 | 0. 개발 흐름 확인 (테스트 버튼) | `POST /api/dev/db-test` (개발 전용) | 확인 전 |
-| 1 | 1. 직원 호출 (손님 호출 → 관리자 확인) | `POST /api/v1/staff-calls`, `GET /api/v1/staff-call-items`, `GET /api/admin/calls`, `POST /api/admin/calls/{callId}/done` | 더미 |
+| 1 | 1. 직원 호출 (손님 호출 → 관리자 확인) | `POST /api/v1/staff-calls`, `GET /api/v1/staff-call-items`, `GET /admin/api/calls`, `POST /admin/api/calls/{callId}/done` | 완료 |
 | 2 | 2. 룰렛 설정 | `GET /api/v1/roulette/prizes`, `PUT /api/v1/owner/roulette/prizes` | 완료 |
 | 3 | 3. 관리자 AI 추천 | `GET /api/admin/marketing/opportunities?round=` | 진행 중 |
 
@@ -58,7 +58,7 @@
 
 ---
 
-## 1. 직원 호출 (더미)
+## 1. 직원 호출 (완료)
 
 손님이 "물·수저 주세요"를 누르면 → 관리자가 목록에서 보고 → 처리 완료를 누르는 한 줄기 흐름이다. 4개 API가 모두 `staff_calls`·`staff_call_items` 두 테이블(`B/stores/shop_calls.py`)을 쓴다.
 
@@ -79,9 +79,9 @@ UI(직원 호출 다이얼로그 열기) → U/ui/dialogs.py staff_dialog ← ct
 
 **상세 설명 / TODO**
 
-- [ ] 더미 주석처리: `B/seed/content.json`의 `staff_calls` 키는 `/api/content`로 나오므로 새 API로 옮긴 뒤 **그 키만** 지운다. `B/dummy/content_data.py`의 `content_saved`·`"PUT /admin/api/content/{name}"` 줄은 2번(룰렛 저장)과 같이 쓰이므로 둘 다 옮긴 뒤 정리(서준이 마지막 확인).
-- [ ] `shop_calls.py`에 `items()`(목록)와 비어 있을 때 시드 채우기 추가.
-- [ ] `U/user_repository.py _fetch_content`에서 `staff_calls`를 새 경로로 받도록 **그 줄만** 수정.
+- [x] 더미 정리: `B/seed/content.json`의 `staff_calls` 키를 전용 시드와 API로 분리했다. 공용 콘텐츠 저장 더미는 다른 콘텐츠가 사용하므로 유지한다.
+- [x] `shop_calls.py`에 호출 항목 목록과 비어 있을 때 전용 시드로 복구하는 로직을 추가했다.
+- [x] `U/user_repository.py _fetch_content`에서 `staff_calls`를 새 경로로 받도록 수정했다.
 
 ### 1-2. `POST /api/v1/staff-calls` (직원 호출 등록)
 
@@ -101,11 +101,11 @@ UI(직원 호출 · 항목 선택 · 호출 버튼) → U/ui/dialogs.py staff_di
 
 **상세 설명 / TODO**
 
-- [ ] 더미 주석처리: `create_call`의 `dummy.call_created()` 줄, `B/dummy/call_data.py`의 `call_created`와 `"POST /api/calls"` 줄.
-- [ ] `shop_calls.py`의 `add_call`, `call` 구현(파일 안 TODO 그대로).
-- [ ] 문서 경로 `POST /api/v1/staff-calls`는 같은 함수를 부르는 별칭으로 추가. 기존 `/api/calls`는 유지(화면이 사용 중).
+- [x] 더미 정리: `create_call`의 더미 호출과 `B/dummy/call_data.py`의 직원 호출 더미를 제거했다.
+- [x] `shop_calls.py`의 `add_call`, `call`을 구현했다.
+- [x] `POST /api/v1/staff-calls`와 기존 호환 경로 `/api/calls`가 같은 DB 저장 로직을 사용한다.
 
-### 1-3. `GET /api/admin/calls`, `POST /api/admin/calls/{callId}/done` (관리자 호출 관리)
+### 1-3. `GET /admin/api/calls`, `POST /admin/api/calls/{callId}/done` (관리자 호출 관리)
 
 **목표**: 관리자가 호출 목록(최신순, 처리 여부)을 보고 "처리 완료"를 누르면 `done_at`을 기록한다. **관리자 화면이 아직 없다**(과거 삭제됨) — 화면 추가도 이 작업에 포함된다.
 
@@ -123,9 +123,9 @@ UI(관리자 > 직원 호출 관리 · 처리 완료 버튼) → A/views/calls.p
 
 **상세 설명 / TODO**
 
-- [ ] `shop_calls.py`에 `list_calls()`, `mark_done(call_id)` 추가. 라우터는 `B/routers/admin/calls.py`(신규, 등록은 성호의 선작업 PR 또는 `B/routers/admin/__init__.py` 한 줄).
-- [ ] 화면: `A/views/calls.py`(신규), `A/app.py`에 메뉴 한 줄(성호와 조율), `A/admin_repository.py`의 `ApiBackend`·`AdminRepository`와 `A/admin_dummy_data.py DummyBackend`에 같은 이름의 메서드 추가(더미 백엔드에도 필요: 서버 없이 화면이 떠야 한다).
-- [ ] 새 호출이 들어와도 화면이 자동으로 바뀌지 않는다. 상단에 "🔄 새로고침" 버튼부터 만들고, 자동 갱신(`st.fragment(run_every=…)`)은 선택으로 한다.
+- [x] `shop_calls.py`에 `list_calls()`, `mark_done(call_id)`를 추가하고 `B/routers/admin/calls.py`에 관리자 API를 구현했다.
+- [x] `A/views/calls.py`, `A/app.py`, Repository와 더미 백엔드가 같은 호출 응답 구조를 사용한다.
+- [x] 관리자 직원 호출 화면 상단에 새로고침 버튼을 제공한다.
 
 ---
 

@@ -8,8 +8,7 @@ from tests.conftest import ADMIN, login
 
 def test_user_get_dummies(client):
     assert {"name", "branch", "slogan", "tables"} <= client.get("/api/v1/store").json().keys()
-    assert set(client.get("/api/content").json()) == {"categories", "staff_calls",
-                                                       "quiz_questions", "weather", "rules"}
+    assert set(client.get("/api/content").json()) == {"categories", "quiz_questions", "weather", "rules"}
     assert client.get("/api/content/categories").json()[0]["id"] and client.get("/api/content/nope").status_code == 404
 
 
@@ -44,7 +43,6 @@ def test_user_write_dummies(client):
     assert r.status_code == 201 and r.json() == {"no": r.json()["no"], "ai_combo": False, "used_coupon_ids": [7]}
     assert client.post("/api/orders", json={"table_no": 6, "lines": [line], "total": 36000}).status_code == 201  # 비회원
     assert client.post("/api/orders", json={"table_no": 6, "lines": [], "total": 0}).status_code == 422  # 스키마 검증은 그대로
-    assert client.post("/api/calls", json={"table_no": 3, "items": ["💧 물"]}).json()["id"]
     assert client.post("/api/recommendations", json={"table_no": 1, "params": {}, "combo_ids": ["classic"]}).json()["id"]
     me = client.get("/api/members/me", headers=h).json()["id"]
     prize = {"member_id": me, "prize": "10% 할인", "kind": "discount", "percent": 10, "emoji": "🎟️"}

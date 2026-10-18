@@ -22,3 +22,4 @@ class ShopStore(MenuMixin, OrderMixin, CallMixin, RecommendationMixin):
             db.script(schema)
 
         self.seed_menus()
+        self.seed_call_items()

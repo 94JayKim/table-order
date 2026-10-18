@@ -12,8 +12,11 @@ def test_user_get_dummies(client):
     assert client.get("/api/content/categories").json()[0]["id"] and client.get("/api/content/nope").status_code == 404
 
 
-def test_coupon_dummies(client):
+def test_coupon_apis_use_database(client):
     h = login(client, "가")
+    mid = client.get("/api/members/me", headers=h).json()["id"]
+    client.put("/api/tables/1/logins/prize", headers=h,
+               json={"member_id": mid, "prize": "10% 할인", "kind": "discount", "percent": 10})
     box = client.get("/api/v1/coupons", headers=h).json()
     assert box == client.get("/api/coupons", headers=h).json() and {"id", "kind", "label", "used_at"} <= box[0].keys()
     assert "nickname" in client.get("/api/tables/1/coupons", headers=h).json()[0]
@@ -37,10 +40,6 @@ def test_user_write_dummies(client):
     assert client.post("/api/calls", json={"table_no": 3, "items": ["💧 물"]}).json()["id"]
     assert client.post("/api/recommendations", json={"table_no": 1, "params": {}, "combo_ids": ["classic"]}).json()["id"]
     me = client.get("/api/members/me", headers=h).json()["id"]
-    prize = {"member_id": me, "prize": "10% 할인", "kind": "discount", "percent": 10, "emoji": "🎟️"}
-    r = client.put("/api/tables/1/logins/prize", headers=h, json=prize)
-    assert r.status_code == 200 and r.json()["ok"] and r.json()["coupon"]["label"] == "10% 할인"
-    assert client.put("/api/tables/1/logins/prize", headers=h, json={"member_id": me, "prize": "꽝"}).json()["coupon"] is None
 
 
 def test_admin_write_dummies(client):

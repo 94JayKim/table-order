@@ -21,7 +21,7 @@
 | 0 | 0. 개발 흐름 확인 (테스트 버튼) | `POST /api/dev/db-test` (개발 전용) | 확인 전 |
 | 1 | 1. 매장 정보 | `GET /api/v1/store` | 완료 |
 | 2 | 2. 주문 저장 · 테이블 누적 · 주문 이력 | `POST /api/v1/orders`, `GET /api/v1/tables/{id}/orders`, `GET /api/v1/owner/orders` | 완료 |
-| 3 | 3. 룰렛 · 쿠폰함 | `roulette/status·plays`, `tables/{n}/logins/prize`, `coupons`, `tables/{n}/coupons`, `POST /api/orders`(쿠폰 사용) | 부분 / 더미 |
+| 3 | 3. 룰렛 · 쿠폰함 | `roulette/status·plays`, `tables/{n}/logins/prize`, `coupons`, `tables/{n}/coupons`, `POST /api/orders`(쿠폰 사용) | 완료 |
 | 4 | 4. AI 질문 · 추천 · 날씨 · 규칙 | `ai/questions`, `ai/recommendations`, `weather/current`, `ai/recommendation-rules` | 더미 |
 
 **다른 팀원과 겹치는 지점**
@@ -163,7 +163,7 @@ UI(주문 이력 탭) → A/views/orders.py → repo.orders() (A/admin_repositor
 
 ---
 
-## 3. 룰렛 · 쿠폰함 (부분 구현 / 더미)
+## 3. 룰렛 · 쿠폰함 (완료)
 
 **규칙(바꾸지 말 것)**: 룰렛은 회원당 하루 1회(KST). 같은 날 다른 테이블에서도 불가, 다음 날은 가능. 당첨은 즉시 적용하지 않고 `coupons`(쿠폰함)에 넣고, 주문 화면 쿠폰함에서 사용/취소하며 주문 시 `used_at`을 기록한다. 유효기간은 미정(`expires_at` null).
 
@@ -184,7 +184,7 @@ UI(주문 이력 탭) → A/views/orders.py → repo.orders() (A/admin_repositor
 
 **흐름**
 ```
-UI(룰렛 돌리기) → U/ui/roulette.py → U/state/roulette.py spin_roulette → U/server.py save_prize
+UI(룰렛 돌리기) → U/ui/roulette.py → U/state/roulette.py spin_roulette → U/server.py play_roulette
  → PUT /api/tables/{n}/logins/prize {member_id, prize, kind, percent|item_id}
  → B/routers/roulette.py tablet_login_prize → (검사) B/stores/coupons.py issued_today → B/stores/tablet_logins.py set_prize
  → B/stores/coupons.py issue → DB(table_logins UPDATE, coupons INSERT) → {ok, coupon}
@@ -193,10 +193,10 @@ UI(룰렛 돌리기) → U/ui/roulette.py → U/state/roulette.py spin_roulette 
 
 **상세 설명 / TODO**
 
-- [ ] 더미 주석처리: `tablet_login_prize`의 `dummy.prize_saved(...)`, `B/dummy/coupon_data.py`의 `prize_saved`·`"PUT /api/tables/{table_no}/logins/prize"` 줄.
-- [ ] `tablet_logins.set_prize`, `coupons.issue`, `coupons.get` 구현(파일 안 TODO). 라우터 TODO 1~5 순서대로.
-- [ ] **쿠폰과 룰렛 칸 연결**: 뼈대에 자리를 이미 넣었다. `set_prize(table_no, member_id, prize, prize_id=None)`는 기록한 `table_logins` 행의 id를 돌려주고, `coupons.issue(..., prize_id=None, table_login_id=None)`에 그 값을 넣는다. `coupons.table_login_id`가 UNIQUE라 "룰렛 1번 = 쿠폰 1장"을 DB가 보장한다. 요청 `PrizeIn.prize_id`는 선택이라, 석원의 `roulette_prizes.list()`가 칸 `id`를 내려주기 전에는 화면이 보내지 않아도 동작한다(그 경우 `prize_id`는 null). 칸 `id`를 내려줄지는 석원과 합의한다.
-- [ ] `coupons.issued_today`와 `tablet_logins.record/list`는 성호의 QR 로그인이 쓰므로 이름·동작을 바꾸지 않는다.
+- [x] 더미 주석처리: `tablet_login_prize`의 `dummy.prize_saved(...)`, `B/dummy/coupon_data.py`의 `prize_saved`·`"PUT /api/tables/{table_no}/logins/prize"` 줄.
+- [x] `tablet_logins.set_prize`, `coupons.issue`, `coupons.get` 구현(파일 안 TODO). 라우터 TODO 1~5 순서대로.
+- [x] **쿠폰과 룰렛 칸 연결**: `set_prize`가 기록한 `table_logins` 행 id를 `coupons.issue`의 `table_login_id`로 연결하고, `prize_id`도 선택적으로 저장한다. 부분 유니크 인덱스로 룰렛 1회당 쿠폰 1장을 보장한다.
+- [x] `coupons.issued_today`와 `tablet_logins.record/list`의 기존 QR 로그인 연동을 유지한다.
 
 ### 3-2. `GET /api/v1/roulette/status`, `POST /api/v1/roulette/plays`
 
@@ -217,10 +217,10 @@ UI(룰렛 돌리기 버튼) → U/state/roulette.py spin_roulette → (새) serv
 
 **상세 설명 / TODO**
 
-- [ ] 3-1을 먼저 끝낸다. `plays`는 3-1의 검사·저장 코드를 함수로 빼서 재사용한다(복붙 금지).
-- [ ] `status` 응답: 이 태블릿 로그인 회원별 `{id, nickname, eligible, prize}` + 남은 기회 수. (`tablet_logins.list`를 재사용 가능)
-- [ ] 화면 변경은 `U/state/roulette.py`·`U/server.py`·`U/ui/roulette.py`의 룰렛 부분만. 서버가 안 닿을 때의 로컬 추첨은 대체 경로로 남긴다.
-- [ ] 석원이 `roulette_prizes.list()`를 만들기 전에는 `U/menu_data.py`의 칸 구성을 임시로 쓰고 TODO 주석으로 표시한다.
+- [x] 3-1을 먼저 끝낸다. `plays`는 3-1의 검사·저장 코드를 `_save_prize`로 재사용한다.
+- [x] `status` 응답: 이 태블릿 로그인 회원별 `{id, nickname, eligible, prize}`와 `spins_left`·`remaining`을 반환한다.
+- [x] 화면은 서버가 결정한 결과로 회전하고, 서버가 안 닿을 때만 로컬 추첨을 대체 경로로 사용한다.
+- [x] `roulette_prizes.list()`의 서버 설정을 추첨에 사용한다.
 
 ### 3-3. `GET /api/v1/coupons`, `GET /api/tables/{tableNo}/coupons`
 
@@ -240,8 +240,8 @@ UI(🎟️ 쿠폰함 팝업) → U/ui/coupons.py → U/state/coupons.py load_cou
 
 **상세 설명 / TODO**
 
-- [ ] 더미 주석처리: `my_coupons`, `table_coupons`의 `dummy.*` 줄과 `B/dummy/coupon_data.py`의 `member_coupons`·`table_coupons`·`_coupons`·`_MEMBER_NAMES`, `coupon_data.py`의 `ENDPOINTS` 두 줄.
-- [ ] `coupons.for_member`, `coupons.for_members` 구현. 두 라우트의 별칭(`/v1/coupons`, `/coupons`)은 그대로 둔다.
+- [x] 더미 주석처리: `my_coupons`, `table_coupons`의 `dummy.*` 줄과 `B/dummy/coupon_data.py`의 관련 함수·`ENDPOINTS` 줄.
+- [x] `coupons.for_member`, `coupons.for_members` 구현. 두 라우트의 별칭(`/v1/coupons`, `/coupons`)은 그대로 둔다.
 
 ### 3-4. `POST /api/orders` 쿠폰 사용 (`coupon_ids`)
 
@@ -260,8 +260,8 @@ UI(주문하기) → U/state/coupons.py pending_coupon_ids → create_order(coup
 
 **상세 설명 / TODO**
 
-- [ ] `coupons.use` 구현 후 2-1의 `create_order`에서 호출. 같은 id가 중복으로 와도 한 번만 처리한다.
-- [ ] `BT/test_dummy_get.py::test_user_write_dummies`에서 본인 기능 줄(주문·쿠폰·prize)을 빼고 새 테스트로 대체.
+- [x] `coupons.use` 구현 후 2-1의 `create_order`에서 호출. 같은 id가 중복으로 와도 한 번만 처리한다.
+- [x] `BT/test_dummy_get.py::test_user_write_dummies`에서 본인 기능 줄(주문·쿠폰·prize)을 빼고 실제 DB 테스트로 대체했다.
 
 ---
 

@@ -35,7 +35,13 @@ async def create_order(body: OrderIn, request: Request, member: dict | None = De
     """
     saved = request.app.state.shop.add_order(body.table_no, [line.model_dump() for line in body.lines], body.total,
                                               member["id"] if member else None)
-    return {"no": saved["id"], "ai_combo": saved["ai_combo"], "used_coupon_ids": list(body.coupon_ids)}
+    used_coupon_ids = []
+    if member and body.coupon_ids:
+        # 한 테이블의 로그인 회원들이 공유하는 쿠폰함에서만 사용 처리한다.
+        table_members = request.app.state.tablet_logins.list(body.table_no)
+        used_coupon_ids = request.app.state.coupons.use(
+            body.coupon_ids, [row["id"] for row in table_members], saved["id"])
+    return {"no": saved["id"], "ai_combo": saved["ai_combo"], "used_coupon_ids": used_coupon_ids}
 
 
 @router.get("/v1/tables/{table_no}/orders")

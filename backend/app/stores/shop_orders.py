@@ -5,7 +5,7 @@ Supabase 에서는 orders(주문) / order_items(줄) / order_item_components(AI 
 
 [뼈대] 시그니처와 스키마만 남겼다. 구현은 TODO 를 따라 채운다.
 """
-from datatime import datetime, timezone
+from datetime import datetime, timezone
 SCHEMA = """\
 CREATE TABLE IF NOT EXISTS orders (
     id                         INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -69,9 +69,23 @@ def save_prize(token: str, table_no: int, member_id: int, prize: dict):
     """룰렛 결과를 서버에 남겨 새로고침 뒤에도 '이미 돌렸다'가 유지되게 하고, 쿠폰함에 쿠폰으로 넣는다.
     prize 는 콘텐츠의 룰렛 칸({short, emoji, kind, percent | item_id}). 발급된 쿠폰 dict 를 돌려주고, 서버가 안 닿으면 None."""
     body = {"member_id": member_id, "prize": prize["short"], "kind": prize["kind"], "emoji": prize.get("emoji", "🎁"),
-            "percent": prize.get("percent"), "item_id": prize.get("item_id")}
+            "percent": prize.get("percent"), "item_id": prize.get("item_id"), "prize_id": prize.get("id")}
     r = safe_call(api.put, f"/api/tables/{table_no}/logins/prize", token, json=body)
     return r["coupon"] if r else None
+
+
+def play_roulette(token: str, table_no: int, member_id: int):
+    """서버가 정한 룰렛 결과를 받는다. 연결 실패는 None, 서버 거절은 error dict로 구분한다."""
+    if not is_online():
+        return None
+    try:
+        return api.post("/api/v1/roulette/plays", token,
+                        json={"table_no": table_no, "member_id": member_id})
+    except api.ApiUnavailable:
+        mark_offline()
+        return None
+    except api.ApiError as exc:
+        return {"error": str(exc.detail)}
 
 
 def table_coupons(token: str, table_no: int):

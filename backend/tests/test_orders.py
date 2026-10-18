@@ -8,19 +8,19 @@ def line(menu_id="c1", name="통닭", unit=18000, qty=1):
 
 
 def test_create_order_saves_guest_member_and_combo_rows(client):
-    for menu_id, name in (("c1", "통닭"), ("b1", "생맥주")):
+    for menu_id, name in (("test-c1", "통닭"), ("test-b1", "생맥주")):
         client.app.state.db.run("INSERT INTO menus (id, category_id, name, price) VALUES (?, ?, ?, ?)",
                                 (menu_id, "test", name, 1000))
-    guest = client.post("/api/v1/orders", json={"table_no": 3, "lines": [line()], "total": 18000})
+    guest = client.post("/api/v1/orders", json={"table_no": 3, "lines": [line(menu_id="test-c1")], "total": 18000})
     assert guest.status_code == 201
 
     member_headers = login(client, "주문회원")
     combo = {"id": "combo:classic", "name": "AI 조합", "unit": 30000, "qty": 1,
-             "components": [{"id": "c1", "name": "통닭", "qty": 1}, {"id": "b1", "name": "생맥주", "qty": 2}]}
+             "components": [{"id": "test-c1", "name": "통닭", "qty": 1}, {"id": "test-b1", "name": "생맥주", "qty": 2}]}
     saved = client.post("/api/orders", headers=member_headers,
                         json={"table_no": 3, "lines": [combo], "total": 30000, "coupon_ids": [7]})
     assert saved.status_code == 201 and saved.json()["ai_combo"] is True
-    assert saved.json()["used_coupon_ids"] == [7]
+    assert saved.json()["used_coupon_ids"] == []
 
     rows = client.app.state.shop.orders()
     assert [row["member_id"] for row in rows] == [client.get("/api/members/me", headers=member_headers).json()["id"], None]
@@ -28,7 +28,7 @@ def test_create_order_saves_guest_member_and_combo_rows(client):
     assert combo_row["ai_combo"] is True and combo_row["lines"][0]["id"].startswith("combo:")
     components = client.app.state.db.all("SELECT * FROM order_item_components WHERE order_item_id=?",
                                          (client.app.state.db.one("SELECT id FROM order_items WHERE kind='combo'")["id"],))
-    assert len(components) == 2 and {row["menu_id"] for row in components} == {"c1", "b1"}
+    assert len(components) == 2 and {row["menu_id"] for row in components} == {"test-c1", "test-b1"}
 
 
 def test_order_lines_are_required(client):

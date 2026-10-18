@@ -47,7 +47,7 @@ MENUS = [
 ]
 
 # 손님 화면과 같은 룰렛 칸에 관리자용 확률 가중치(weight)를 더한다.
-ROULETTE_PRIZES = [{**p, "weight": 1} for p in menu_data.ROULETTE_PRIZES]
+ROULETTE_PRIZES = [{**p, "weight": 50 if i == 0 else 10} for i, p in enumerate(menu_data.ROULETTE_PRIZES)]
 
 
 class Unsupported(Exception):

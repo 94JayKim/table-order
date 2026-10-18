@@ -38,6 +38,7 @@ ENDPOINTS = {
     "stats": "/admin/api/stats",
     "calls": "/admin/api/calls",
     "sms": "/admin/api/marketing/sms",        # /usage /preview /send /logs
+    "chat": "/admin/api/marketing/chat/sessions",  # AI 챗봇 대화방 (/{id}, /{id}/messages)
     "opt_out": "/admin/api/members/{id}/opt-out",
 }
 KST = timezone(timedelta(hours=9))
@@ -149,6 +150,20 @@ class ApiBackend:
     def sms_logs(self):
         return api.get(f"{ENDPOINTS['sms']}/logs", self.token)
 
+    # ---- AI 챗봇: 대화방·메시지는 서버가 DB 에 저장한다 ----
+    def chat_sessions(self):
+        return api.get(ENDPOINTS["chat"], self.token)
+
+    def chat_create(self):
+        return api.post(ENDPOINTS["chat"], self.token)
+
+    def chat_get(self, session_id):
+        return api.get(f"{ENDPOINTS['chat']}/{session_id}", self.token)
+
+    def chat_send(self, session_id, content):
+        """질문을 보내 [질문, 답변] 메시지를 받는다. 서버가 DB 를 읽고 제미나이를 부르므로 넉넉히 기다린다."""
+        return api.post(f"{ENDPOINTS['chat']}/{session_id}/messages", self.token, json={"content": content}, timeout=60)["messages"]
+
     def opt_out(self, member_id):
         return api.post(ENDPOINTS["opt_out"].format(id=member_id), self.token)
 
@@ -187,7 +202,8 @@ def _menu_emoji(name: str, original: str = "") -> str:
     """메뉴 이름을 보고 서비스 카드에 어울리는 이모지를 자동 배정한다."""
     emoji_rules = (("계란", "🥚"), ("감자", "🍟"), ("치즈볼", "🧀"), ("닭똥집", "🍗"), ("오징어", "🦑"),
                    ("새우", "🍤"), ("먹태", "🐟"), ("떡볶이", "🌶️"), ("노가리", "🐟"), ("건어물", "🦑"), ("콜라", "🥤"),
-                   ("사이다", "🥤"), ("라면", "🍜"), ("주먹밥", "🍙"), ("공깃밥", "🍚"), ("땅콩", "🥜"))
+                   ("탄산", "🥤"), ("사이다", "🥤"), ("소주", "🍶"), ("생맥주", "🍺"), ("라면", "🍜"),
+                   ("주먹밥", "🍙"), ("공깃밥", "🍚"), ("땅콩", "🥜"))
     return next((emoji for word, emoji in emoji_rules if word in name), original if original and original != "🍽️" else "🍴")
 
 
@@ -453,8 +469,8 @@ class AdminRepository:
         return self.backend.call_done(call_id)
 
     # ---- 마케팅 (서버 필요) ----
-    def __getattr__(self, name):  # sms_usage, sms_preview, sms_send, sms_logs, opt_out 은 백엔드로 위임
-        if name.startswith("sms_") or name == "opt_out":
+    def __getattr__(self, name):  # sms_*, chat_*, opt_out 은 백엔드로 위임
+        if name.startswith(("sms_", "chat_")) or name == "opt_out":
             return getattr(self.backend, name)
         raise AttributeError(name)
 

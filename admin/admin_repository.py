@@ -129,6 +129,9 @@ class ApiBackend:
     def sms_usage(self):
         return api.get(f"{ENDPOINTS['sms']}/usage", self.token)
 
+    def sms_balance(self):
+        return api.get(f"{ENDPOINTS['sms']}/balance", self.token)
+
     def sms_preview(self, grades, body, scheduled_at=None, member_ids=None):
         return api.post(f"{ENDPOINTS['sms']}/preview", self.token, json=_sms_body(grades, body, scheduled_at, member_ids))
 

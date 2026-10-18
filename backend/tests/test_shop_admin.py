@@ -94,15 +94,15 @@ def test_content_endpoints_match_frontend_dummy_shape(client):
     import ai_quiz_data, menu_data, recommendation_data
 
     content = client.get("/api/content").json()
-    assert set(content) == {"categories", "staff_calls", "quiz_questions", "weather", "rules"}
+    assert set(content) == {"categories", "quiz_questions", "weather", "rules"}
     assert content["categories"] == menu_data.CATEGORIES
     prizes = client.get("/api/v1/roulette/prizes").json()
     assert [{k: v for k, v in prize.items() if k != "weight"} for prize in prizes] == menu_data.ROULETTE_PRIZES
     assert [prize["weight"] for prize in prizes] == [50, 10, 10, 10, 10, 10]
-    assert content["staff_calls"] == menu_data.STAFF_CALLS
+    assert client.get("/api/v1/staff-call-items").json() == menu_data.STAFF_CALLS
     assert content["quiz_questions"] == ai_quiz_data.QUESTIONS and content["weather"] == ai_quiz_data.WEATHER
     assert content["rules"] == recommendation_data.RULES
-    assert client.get("/api/content/staff_calls").json() == menu_data.STAFF_CALLS
+    assert client.get("/api/content/staff_calls").status_code == 404
     assert client.get("/api/content/nope").status_code == 404
     store = client.get("/api/store").json()
     assert store == menu_data.STORE  # 매장 정보도 더미와 같은 모양

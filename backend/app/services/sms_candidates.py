@@ -15,6 +15,7 @@ from app.core.settings import Settings
 from app.services.external_info import ExternalInfoService
 from app.services.grades import GRADES, grade_of
 from app.services.sms import SmsService
+from app.stores.stats import StatsStore
 
 # 키워드마다 문자를 받을 등급. 발송 API 가 '등급'으로 수신자를 정하므로 키워드도 등급으로 푼다.
 # 복합 키워드는 등급의 교집합이고, 비는 조합은 만들지 않는다.
@@ -71,9 +72,16 @@ class SmsCandidateService:
         high_weight = [{"name": m["name"], "price": m.get("price"), "desc": m.get("desc", "")} for m in best]
         try:
             sold = Counter()
-            for order in self.shop.orders():
-                for line in order["lines"]:
+            if getattr(self.shop, "db", None) is not None:
+                # DB 연동: 실제 주문·조합 구성품 판매량을 통계 저장소에서 직접 읽는다.
+                # 미구현 상태인 ShopStore.orders()의 더미/뼈대에 의존하지 않는다.
+                for line in StatsStore(self.shop.db).menu_sales():
                     sold[line["name"]] += line["qty"]
+            else:
+                # 단위 테스트에서 주입하는 작은 가짜 저장소는 기존 orders 계약을 지원한다.
+                for order in self.shop.orders():
+                    for line in order["lines"]:
+                        sold[line["name"]] += line["qty"]
             top_items = [name for name, _ in sold.most_common(3)]
         except NotImplementedError:
             top_items = []

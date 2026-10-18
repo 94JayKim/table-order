@@ -30,6 +30,9 @@ def solapi_auth(api_key: str, api_secret: str, date: str, salt: str) -> str:
     return f"HMAC-SHA256 ApiKey={api_key}, Date={date}, salt={salt}, signature={sig}"
 
 
+# 무료 한도를 넘는 건당 대략적인 요금(원). 잔액이 충분한지 미리 가늠하는 용도다.
+OVER_QUOTA_UNIT_COST = {"SMS": 20, "LMS": 50}
+
 class SmsRejected(Exception):
     def __init__(self, problems: list[str]):
         super().__init__("; ".join(problems))
@@ -116,12 +119,23 @@ class SmsService:
                 problems.append("예약 시각은 지금부터 10분 이후여야 합니다.")
         if is_night((when or self.clock()).timetz().replace(tzinfo=None)):
             problems.append("야간(21시~08시)에는 광고성 문자를 보낼 수 없습니다.")
+        notices = []
         if len(targets) > remaining:
-            problems.append(f"이번 달 {kind} 무료 잔여 {max(remaining, 0)}건보다 대상({len(targets)}명)이 많습니다.")
+            # 무료 한도를 넘는 건수는 솔라피 잔액으로 보낸다: 잔액이 모자랄 때만 막고, 충분하면 안내만 한다.
+            over = len(targets) - max(remaining, 0)
+            need = over * OVER_QUOTA_UNIT_COST[kind]
+            bal = self.balance()
+            if bal["available"] and bal["balance"] + bal["point"] >= need:
+                notices.append(f"무료 잔여 {max(remaining, 0)}건을 넘는 {over}건은 솔라피 잔액에서 차감됩니다. (약 {need}원)")
+            elif bal["available"]:
+                problems.append(f"솔라피 잔액이 부족합니다. 무료 한도 초과 {over}건에 약 {need}원이 필요합니다.")
+            else:
+                problems.append(f"이번 달 {kind} 무료 잔여 {max(remaining, 0)}건보다 대상({len(targets)}명)이 많고, "
+                                f"솔라피 잔액을 확인할 수 없습니다. ({bal['reason']})")
         if not self.s.sms_dry_run and not self._configured():
             problems.append("솔라피 설정(API 키·시크릿·발신번호·수신거부 번호)이 비어 있습니다.")
         return {"type": kind, "bytes": msg_bytes(text), "content": text, "targets": len(targets),
-                "remaining": remaining, "problems": problems, "ok": not problems, "dry_run": self.s.sms_dry_run,
+                "remaining": remaining, "notices": notices, "problems": problems, "ok": not problems, "dry_run": self.s.sms_dry_run,
                 "scheduled_at": when.isoformat() if when else None}
 
     def _kst(self, when: datetime) -> datetime:

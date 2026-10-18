@@ -125,9 +125,16 @@ def marketing_dashboard(repo):
         return
     members = repo.members(ss["grade_rule"])
     pool = members[members["마케팅 수신 동의"] & ~members["수신거부"]]
+    # 솔라피 충전 잔액: 조회가 안 되면(키 없음·오류) 이유를 카드에 보여 준다. 더미 모드에는 없으므로 건너뛴다.
+    try:
+        bal = repo.sms_balance()
+    except (Unsupported, AttributeError, repo_mod.api.ApiError, repo_mod.api.ApiUnavailable):
+        bal = {"available": False, "reason": "서버에 연결되지 않았습니다."}
     st.html('<div class="kpis">'
             + usage_card("이번 달 SMS", usage["used"]["SMS"], usage["limit"]["SMS"])
             + usage_card("이번 달 LMS", usage["used"]["LMS"], usage["limit"]["LMS"])
+            + (kpi("솔라피 잔액", f'{int(bal["balance"]):,}', "원", sub=f'포인트 {int(bal["point"]):,}원')
+               if bal.get("available") else kpi("솔라피 잔액", "-", "", sub=bal.get("reason", "조회할 수 없습니다.")))
             + kpi("발송 가능 고객", len(pool), "명", sub=f"전체 회원 {len(members)}명 중 수신 동의", accent=True)
             + kpi("수신거부", int(members["수신거부"].sum()), "명", sub="발송 대상에서 자동 제외") + "</div>")
     # 한 화면에 들어오도록 작성 / 발송 내역 / 수신거부·안내를 탭으로 나눈다.

@@ -270,6 +270,11 @@ def _render_regular_preferences(repo):
         st.info("단골 손님 정보를 불러오지 못했어요. 잠시 후 재추천을 눌러 주세요.")
         return
     if not cards:
+        # 실제 DB에 대상이 없을 때 예시 손님을 섞으면 고객 정보로 오해할 수 있다.
+        if repo.source == "api":
+            sec_title("손님 응대 제안")
+            st.info("오늘 주문이 확인된 재방문 고객이 아직 없습니다. 새 주문 후 재추천을 눌러 확인해 주세요.")
+            return
         # DB에 예시 회원을 넣지 않고도 발표에서 추천 동작과 문구를 보여줄 수 있게 한다.
         cards = regular_preference_preview_cards(repo.customer_grade_rules()["repeat"])
         sec_title("손님 응대 제안", "AI가 추천할 현장 응대를 미리 확인해 보세요")

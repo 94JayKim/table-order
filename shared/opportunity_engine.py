@@ -18,10 +18,11 @@ EMPTY_RECOMMENDATION = {
 
 
 def _time(value) -> datetime:
-    if isinstance(value, datetime):
-        return value
-    parsed = datetime.fromisoformat(str(value))
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    # DB의 UTC 시각도 매장의 한국 시각으로 바꿔 야간·요일·휴면 추천 기준을 맞춘다.
+    parsed = value if isinstance(value, datetime) else datetime.fromisoformat(str(value))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone(timedelta(hours=9)))
 
 
 def _date(value) -> date | None:

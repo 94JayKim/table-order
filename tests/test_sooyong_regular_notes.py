@@ -84,12 +84,9 @@ def test_empty_db_keeps_customer_screen_working(server, monkeypatch):
     assert "단골 손님 대화 메모" not in [title.value for title in screen.subheader]
     screen.sidebar.radio(key="nav_sub_마케팅").set_value("AI 추천").run()
     assert not screen.exception and "주문율 80%" not in html_of(screen)
-    addition = next(element.value for element in screen.get("html") if 'class="recs regular-preferences"' in element.value)
-    assert "AI가 이런 인사를 추천할 예정" in addition
-    assert addition.count('class="rec"') == 2
-    assert addition.count("80%") == 1
-    assert "또 찾아주셔서 감사합니다" in addition
-    assert any("문구는 달라질 수 있어요" in element.value for element in screen.caption)
+    # 실제 DB가 비어 있으면 시연용 손님 대신 빈 상태를 알려야 한다.
+    assert 'class="recs regular-preferences"' not in html_of(screen)
+    assert any("오늘 주문이 확인된 재방문 고객이 아직 없습니다" in element.value for element in screen.info)
     assert server.app.state.members.all() == []
     assert server.app.state.db.all("SELECT * FROM orders") == []
 

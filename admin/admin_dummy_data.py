@@ -154,6 +154,42 @@ class DummyBackend:
         cur.update(fields)
         return dict(cur)
 
+    def save_menus(self, items: list[dict]) -> dict:
+        """모든 새 메뉴 입력을 먼저 확인한 뒤 더미 메뉴 목록도 한 번에 갱신한다."""
+        ids = [item.get("id") for item in items]
+        if not items or any(not menu_id for menu_id in ids) or len(ids) != len(set(ids)):
+            raise ValueError("저장할 메뉴 ID가 비었거나 중복되었습니다.")
+        existing_ids = {menu["id"] for menu in self.menus_}
+        required = ("name", "cat", "price")
+        for menu_id, item in zip(ids, items):
+            if item.get("delete") is True:
+                if menu_id not in existing_ids:
+                    raise Unsupported("메뉴를 찾을 수 없습니다.")
+                if set(item) - {"id", "delete"}:
+                    raise ValueError("삭제 항목에는 ID와 delete만 보낼 수 있습니다.")
+            elif menu_id not in existing_ids and any(key not in item for key in required):
+                raise ValueError("새 메뉴에는 이름, 카테고리, 가격이 필요합니다.")
+
+        # 중간 입력 오류가 나도 일부 행만 바뀌지 않도록 복사본에서 모두 반영한다.
+        updated = [dict(menu) for menu in self.menus_]
+        by_id = {menu["id"]: menu for menu in updated}
+        for item in items:
+            menu_id = item["id"]
+            if item.get("delete") is True:
+                updated = [menu for menu in updated if menu["id"] != menu_id]
+                by_id.pop(menu_id)
+                continue
+            menu = by_id.get(menu_id)
+            if menu is None:
+                menu = _menu(menu_id, item["cat"], item["name"], item["price"])
+                updated.append(menu)
+                by_id[menu_id] = menu
+            menu.update({key: value for key, value in item.items() if key != "id"})
+        self.menus_ = updated
+        saved_ids = [item["id"] for item in items if item.get("delete") is not True]
+        return {"saved": len(saved_ids), "deleted": len(items) - len(saved_ids),
+                "menus": [dict(by_id[menu_id]) for menu_id in saved_ids]}
+
     def delete_menu(self, menu_id: str) -> None:
         self.menus_ = [m for m in self.menus_ if m["id"] != menu_id]
 

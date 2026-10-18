@@ -214,3 +214,19 @@ def test_gemini_endless_function_calls_stop(monkeypatch):
         sid = c.post(BASE, headers=ADMIN).json()["id"]
         r = c.post(f"{BASE}/{sid}/messages", headers=ADMIN, json={"content": "?"})
         assert r.status_code == 502
+
+
+def test_follow_up_question_sends_previous_answer_as_context(monkeypatch):
+    """멀티턴: 둘째 질문을 보낼 때 첫 질문(user)과 첫 답변(model)이 제미나이에 함께 전달된다."""
+    sent = []
+
+    def call(self, system, contents):
+        sent.append(contents)
+        return {"role": "model", "parts": [{"text": f"답변{len(sent)}"}]}
+    monkeypatch.setattr(chat_service.ChatService, "_call", call)
+    with make(gemini_api_key="k") as c:
+        sid = c.post(BASE, headers=ADMIN).json()["id"]
+        c.post(f"{BASE}/{sid}/messages", headers=ADMIN, json={"content": "저번주 매출?"})
+        c.post(f"{BASE}/{sid}/messages", headers=ADMIN, json={"content": "그럼 그 전주는?"})
+    second = [(m["role"], m["parts"][0]["text"]) for m in sent[1]]
+    assert second == [("user", "저번주 매출?"), ("model", "답변1"), ("user", "그럼 그 전주는?")]

@@ -64,14 +64,27 @@ def test_api_dashboard_ignores_dummy_orders_and_refreshes(server, monkeypatch):
         assert not screen.exception
 
 
-def test_today_revenue_is_not_last_business_day(server, monkeypatch):
-    yesterday = datetime.now(timezone.utc) - timedelta(days=1)
-    server.app.state.db.run("INSERT INTO orders (table_no, total, created_at) VALUES (?, ?, ?)",
-                            (3, 87654, yesterday.isoformat()))
+@pytest.mark.parametrize("days_ago", [1, 30])
+def test_demo_sales_cards_keep_last_order_day_values_after_date_changes(server, monkeypatch, days_ago):
+    # 시연 후 하루·한 달이 지나도 세 카드는 준비한 마지막 주문일의 값을 유지한다.
+    demo_day = datetime.now(timezone.utc) - timedelta(days=days_ago)
+    for amount in (10000, 31000):
+        server.app.state.db.run("INSERT INTO orders (table_no, total, created_at) VALUES (?, ?, ?)",
+                                (3, amount, demo_day.isoformat()))
+    before = server.app.state.db.all("SELECT * FROM orders ORDER BY id")
+    repo = ar.AdminRepository(ar.ApiBackend("admin-secret"))
+    assert repo.stats()["today_orders"] == repo.sales_insights()["today_revenue"] == 0
+    assert repo.sales_insights()["last_day_orders"] == 2
     screen = open_dashboard(monkeypatch)
-    html = "\n".join(element.value for element in screen.get("html"))
-    assert '오늘 매출</div><div class="v">0' in html
-    assert '마지막 영업일 매출</div><div class="v">87,654' in html
+    for tab in ("한눈에 보기", "오늘 · 매출"):
+        screen.sidebar.radio(key="nav_sub_대시보드").set_value(tab).run()
+        assert not screen.exception
+        html = "\n".join(element.value for element in screen.get("html"))
+        assert '오늘 주문</div><div class="v">2' in html
+        assert '평균 주문금액</div><div class="v">20,500' in html
+        assert '오늘 매출</div><div class="v">41,000' in html
+        assert '마지막 영업일 매출</div><div class="v">41,000' in html
+    assert server.app.state.db.all("SELECT * FROM orders ORDER BY id") == before
 
 
 def test_dummy_mode_keeps_original_calculation():

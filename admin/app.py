@@ -115,6 +115,8 @@ if ss.get("customer_rule_defaults") != current_rule or ss.get("customer_rule_sou
     customers_view.reset_rule()
     for key in ("ai_candidates", "ai_picked", "sms_excluded"):
         ss.pop(key, None)
+# 다른 화면에는 저장 기준만 전달한다. 예전 세션에 남은 복원 미리보기도 여기서 바로잡는다.
+ss["grade_rule"] = dict(current_rule)
 store = repo.backend.store()
 with st.sidebar:
     st.html(f'<div class="sb-brand"><div class="sb-logo">🍺</div><div><div class="sb-name">식당도우미</div>'

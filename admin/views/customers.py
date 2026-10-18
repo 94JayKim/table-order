@@ -13,6 +13,8 @@ ss = st.session_state
 def reset_rule():
     # 서버 설정이 바뀐 경우에도 하드코딩된 값 대신 실제 기본 기준으로 돌아간다.
     ss["grade_rule"] = dict(ss.get("customer_rule_defaults", DEFAULT_RULE))
+    # 조건표의 복원 미리보기는 다른 화면이 사용하는 저장 기준과 따로 관리한다.
+    ss["grade_rule_preview"] = dict(ss["grade_rule"])
     for key in ("rule_repeat", "rule_regular", "rule_dormant"):
         ss.pop(key, None)
     ss["grade_inputs_changed"] = False
@@ -27,7 +29,7 @@ def reset_rule_inputs():
 
 def restore_rule():
     """마지막 저장값과 구분해 조건 미리보기와 입력칸을 초기 기준으로 돌린다."""
-    ss["grade_rule"] = dict(DEFAULT_RULE)
+    ss["grade_rule_preview"] = dict(DEFAULT_RULE)
     reset_rule_inputs()
 
 
@@ -50,6 +52,7 @@ def save_rule(repo):
         return
     ss["customer_rule_defaults"] = dict(saved)
     ss["grade_rule"] = dict(saved)
+    ss["grade_rule_preview"] = dict(saved)
     ss["grade_save_success"] = True
     ss.pop("grade_save_error", None)
     ss["grade_inputs_changed"] = False
@@ -95,7 +98,8 @@ def page_customers(repo, sub="고객 목록"):
         ss["customer_rule_source"] = repo.source
         reset_rule()
     ss["customer_rule_defaults"] = dict(defaults)
-    rule = ss["grade_rule"]  # 기준값은 세션에 저장돼 있어서 다른 하위 메뉴로 옮겨도 유지된다
+    # 복원 미리보기는 기준 화면에만 표시하고 고객 목록은 실제 저장 기준으로 분류한다.
+    rule = ss.setdefault("grade_rule_preview", dict(defaults)) if sub == "등급 분류 기준" else defaults
     if sub == "등급 분류 기준":
         st.caption("숫자를 수정한 뒤 기준 저장을 눌러 적용해 주세요. 저장 전에는 아래 조건과 고객 수가 바뀌지 않아요.")
         if ss.pop("grade_save_success", False):

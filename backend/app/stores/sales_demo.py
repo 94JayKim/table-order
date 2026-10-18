@@ -204,6 +204,48 @@ def rebalance_sales_demo_tables(db: Database, *, apply: bool = False) -> dict:
                     "created_order_ids": created_ids, "replaced_order_ids": replaced_ids}
 
 
+def consolidate_sales_demo_orders(db: Database, *, apply: bool = False) -> dict:
+    """마지막 주문일의 시연 추가 주문만 테이블별로 묶고 메뉴·수량·매출은 유지한다."""
+    with db._lock:
+        # 메뉴 줄 이동과 중복 주문 삭제를 함께 처리해 실패하면 원래 주문으로 돌아간다.
+        with db._conn.transaction() if db.pg else db._conn:
+            if db.pg and apply:
+                db._execute("SELECT pg_advisory_xact_lock(73102517)")
+            owned, lines = _demo_records(db)
+            if not owned:
+                raise ValueError("묶을 시연 주문이 없습니다.")
+            latest = max(_stamp(row["created_at"]).date() for row in db._execute(
+                "SELECT created_at FROM orders").fetchall())
+            current = [order for order in owned if _stamp(order["created_at"]).date() == latest]
+            if not current:
+                raise ValueError("마지막 주문일에 묶을 시연 주문이 없습니다.")
+            prices = {row["id"]: row["price"] for row in db._execute("SELECT id, price FROM menus").fetchall()}
+            if any(prices.get(line["menu_id"]) != line["unit_price"]
+                   for order in current for line in lines[order["id"]]):
+                raise ValueError("시연 주문의 단가가 현재 등록 메뉴 가격과 달라 적용하지 않습니다.")
+            grouped = defaultdict(list)
+            for order in sorted(current, key=lambda order: (_stamp(order["created_at"]), order["id"])):
+                grouped[order["table_no"]].append(order)
+            amounts = [sum(order["total"] for order in grouped[table]) for table in sorted(grouped)]
+            removed_ids = []
+            if apply:
+                for group in grouped.values():
+                    kept = group[0]
+                    for extra in group[1:]:
+                        # 같은 테이블의 첫 주문에 기존 메뉴 줄을 옮겨 단가·수량·줄 ID를 보존한다.
+                        db._execute("UPDATE order_items SET order_id=? WHERE order_id=?", (kept["id"], extra["id"]))
+                        db._execute("DELETE FROM orders WHERE id=?", (extra["id"],))
+                        removed_ids.append(extra["id"])
+                    if len(group) > 1:
+                        db._execute("UPDATE orders SET total=? WHERE id=?",
+                                    (sum(order["total"] for order in group), kept["id"]))
+            total = sum(amounts)
+            return {"applied": apply, "unchanged": len(current) == len(grouped),
+                    "last_order_date": latest.isoformat(), "before_orders": len(current),
+                    "after_orders": len(grouped), "total": total, "average": total // len(grouped),
+                    "table_amounts": dict(zip(sorted(grouped), amounts)), "removed_order_ids": removed_ids}
+
+
 def seed_sales_demo(db: Database, today: date, *, apply: bool = False) -> dict:
     """하루는 약 +10%, 일주일은 약 -6%로 구성한다. 기본 실행은 미리보기다."""
     with db._lock:

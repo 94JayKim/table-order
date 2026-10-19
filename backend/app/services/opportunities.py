@@ -92,9 +92,11 @@ def _keywords_for(grades: list[str], info: dict) -> list[str]:
         keywords = ["주문", "단골"]
     else:
         keywords = ["가중치", "주문"]
-    # 오늘 날씨 정보가 있으면 문구에 한 줄 더한다(모든 등급에 쓸 수 있는 키워드)
+    # 오늘 날씨·주변 행사 정보가 있으면 문구에 한 줄씩 더한다(없는 정보를 지어내지 않도록 값이 있을 때만)
     if info.get("weather_text", "").strip():
         keywords.append("날씨")
+    if info.get("event_text", "").strip():
+        keywords.append("행사")
     return keywords
 
 

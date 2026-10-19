@@ -336,7 +336,7 @@ class DummyBackend:
                         "last_visit_at": member["last_visit"]} for member in self.members_]
         menu_rows = [{"name": menu["name"], "category": menu["cat"], "spicy": menu["spicy"],
                       "soldout": menu["soldout"], "weight": menu["weight"]} for menu in self.menus_]
-        context = build_context(member_rows, self.orders_, menu_rows, self.stats(rule), TODAY)
+        context = build_context(member_rows, self.orders_, menu_rows, self.stats(rule), TODAY, rule=rule)
         result = pick_recommendations(recommend(context), round_no)
         result["summary"] = {
             "members": {key: context["members"][key] for key in

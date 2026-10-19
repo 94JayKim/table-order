@@ -92,3 +92,28 @@ def test_recommendation_hour_weekday_follow_kst(stamp):
     context = build_context([], [{'ts': stamp, 'total': 10000}], [], {}, datetime(2026, 10, 17).date())
     assert context['orders']['peak_hours'] == [0]
     assert context['orders']['weekdays'] == [(5, 1)]
+
+
+def test_dormant_recommendations_follow_saved_grade_rules(client):
+    """단골 기준 변경 시 휴면 고객의 추천도 고정 5회가 아닌 저장 기준으로 다시 분류한다."""
+    member = client.app.state.members.upsert_login('sync-dormant', '휴면 고객')
+    client.app.state.db.run('UPDATE members SET visit_count=6, last_visit_at=? WHERE id=?',
+                            ((datetime.now(KST) - timedelta(days=40)).isoformat(), member['id']))
+
+    def titles():
+        first = get(client, 'marketing/opportunities')
+        cards = first['items']
+        for page in range(1, first['pages']):
+            cards += get(client, f'marketing/opportunities?round={page}')['items']
+        return ' '.join(card['title'] for card in cards)
+
+    response = client.put('/admin/api/customers/grades/rules', headers=ADMIN,
+                          json={'repeat': 3, 'regular': 8, 'dormant': 30})
+    assert response.status_code == 200
+    current = titles()
+    assert '재방문하다 멈춘 휴면 고객' in current and '예전 단골이 된 휴면 고객' not in current
+    response = client.put('/admin/api/customers/grades/rules', headers=ADMIN,
+                          json={'repeat': 2, 'regular': 5, 'dormant': 30})
+    assert response.status_code == 200
+    current = titles()
+    assert '예전 단골이 된 휴면 고객' in current and '재방문하다 멈춘 휴면 고객' not in current

@@ -315,6 +315,12 @@ def _render_table_map(repo, preferences):
 
 @st.fragment(run_every=POLL_SECONDS)  # 이 영역만 POLL_SECONDS 초마다 다시 실행해 새 로그인·주문을 확인한다
 def _render_regular_preferences(repo):
+    # 다시 실행되는 동안 Streamlit 이 화면을 흐리게(stale) 만드는 것을 admin.css 에서 이 컨테이너만 꺼 둔다.
+    with st.container(key="mk_live"):
+        _regular_preferences_body(repo)
+
+
+def _regular_preferences_body(repo):
     """오늘 주문한 단골·주간 반복 방문·특별일 고객의 응대 제안을 표시한다. 배치도는 데이터가 없어도 항상 보인다."""
     try:
         preferences = repo.regular_preferences()

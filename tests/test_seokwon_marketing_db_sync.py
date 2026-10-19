@@ -13,7 +13,7 @@ from test_sooyong_today_orders import open_dashboard, server
 
 
 def test_growth_screen_refresh_reads_new_members_and_guest_sales(server, monkeypatch):
-    """한 화면을 열어 둔 상태에서 회원과 비회원 주문 추가가 KPI·고객표에 함께 반영된다."""
+    """한 화면에서 새 주문을 반영하고, 대시보드 중복 없이 성장 성과를 다시 계산한다."""
     now = datetime.now(timezone.utc)
     db = server.app.state.db
     member = server.app.state.members.upsert_login('growth-sync', '성과 검증 고객')
@@ -23,21 +23,18 @@ def test_growth_screen_refresh_reads_new_members_and_guest_sales(server, monkeyp
     screen = open_dashboard(monkeypatch)
     screen.sidebar.radio(key='nav_sub_마케팅').set_value('F&B그로스 성과').run()
     assert not screen.exception
-    assert len(screen.dataframe[0].value) == 1
     html = '\n'.join(element.value for element in screen.get('html'))
-    assert '오늘 매출</div><div class="v">20,000' in html
     assert 'AI 도입 후 월환산 성과 매출</div><div class="v">600,000' in html
     server.app.state.members.upsert_login('growth-new', '새 고객')
     db.run('INSERT INTO orders (table_no, total, ai_combo, created_at) VALUES (8, 30000, 0, ?)', (now.isoformat(),))
     screen.button(key='growth_refresh').click().run()
     assert not screen.exception
-    assert len(screen.dataframe[0].value) == 2
     html = '\n'.join(element.value for element in screen.get('html'))
-    assert '오늘 매출</div><div class="v">50,000' in html
     assert 'AI 도입 후 월환산 성과 매출</div><div class="v">1,500,000' in html
     assert '최종 월환산 매출 차이</div><div class="v">1,350,000' in html
     # AI 조합 매출은 동일하고 일반 주문만 늘었으므로 그 비중은 100%에서 40%로 바뀐다.
     assert '도입 후 AI 주문 매출 비중</div><div class="v">40.0%' in html
+    assert '1. 매출데이터' not in html and '2. 고객데이터' not in html
 
 
 def test_recommendation_sms_does_not_auto_select_new_db_members(server, monkeypatch):

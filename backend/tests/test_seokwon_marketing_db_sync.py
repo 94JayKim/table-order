@@ -71,7 +71,8 @@ def test_thousand_members_and_orders_update_every_marketing_reader(client):
         assert f'전체 누적: 매출 {revenue:,}원, 주문 {order_count}건' in chat
 
     verify(1000, 1000, 15000000, 10000000, 500)
-    assert len(get(client, 'marketing/regular-preferences')['preferences']) == 400
+    # 각 회원은 오늘 또는 이틀 전 중 하루만 주문했으므로 반복 방문 기준에 해당하지 않는다.
+    assert get(client, 'marketing/regular-preferences')['preferences'] == []
     # 같은 앱 인스턴스를 유지한 채 고객·주문을 추가하고 기존 회원의 수신거부를 변경한다.
     member = client.app.state.members.upsert_login('sync-new', '새고객', phone='01000000000')
     client.app.state.members.set_marketing_consent(member['id'], True)

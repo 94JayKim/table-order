@@ -272,7 +272,7 @@ def pick_recommendations(recs, round_no):
 
 
 def _render_regular_preferences(repo):
-    """오늘 주문한 2회 이상 방문 고객의 실시간 응대 제안을 표시한다."""
+    """오늘 주문한 단골·주간 반복 방문·특별일 고객의 응대 제안을 표시한다."""
     try:
         cards = regular_preference_cards(repo.regular_preferences())
     except (repo_mod.api.ApiError, repo_mod.api.ApiUnavailable):
@@ -286,13 +286,12 @@ def _render_regular_preferences(repo):
             st.info("오늘 주문이 확인된 재방문 고객이 아직 없습니다. 새 주문 후 재추천을 눌러 확인해 주세요.")
             return
         # DB에 예시 회원을 넣지 않고도 발표에서 추천 동작과 문구를 보여줄 수 있게 한다.
-        cards = regular_preference_preview_cards(repo.customer_grade_rules()["repeat"])
+        cards = regular_preference_preview_cards()
         sec_title("손님 응대 제안", "AI가 추천할 현장 응대를 미리 확인해 보세요")
-        st.caption("지금은 추천 예정 예시예요. 실제 2회 이상 방문 고객이 로그인하고 주문하면, "
-                   "이전 방문·테이블·주문과 오늘 상황에 맞는 서비스 및 인사말로 바뀝니다. "
-                   "새 주문과 상황에 따라 문구는 달라질 수 있어요.")
+        st.caption("지금은 추천 예정 예시예요. 단골 등급, 최근 7일 2일 이상 방문, 생일 또는 "
+               "첫 방문 기념일이 확인된 손님이 오늘 주문하면 상황에 맞는 응대를 제안해요.")
     else:
-        sec_title("손님 응대 제안", "오늘 다시 온 손님을 알아보고 서비스할 때 참고해 주세요")
+        sec_title("손님 응대 제안", "단골과 특별한 방문 상황이 확인된 손님에게 응대를 제안해요")
     # 한 안내 안에서 손님별 제안을 읽기 쉽도록 줄바꿈하며, DB 텍스트는 먼저 이스케이프한다.
     body = "".join(f'<div class="rec" style="grid-column:1 / -1"><div class="rt">{escape(card["title"])}</div>'
                    f'<div class="rw">{escape(card["why"])}</div>'

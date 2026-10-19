@@ -307,10 +307,15 @@ def _render_table_map(repo, preferences):
             st.info("오늘은 응대 제안이 있는 테이블이 없어요.")
             return
         tip = suggestions[selected]
-        st.html('<div class="rec"><div class="rt">' + escape(f"{selected}번 테이블 · {tip['nickname']}님") + '</div>'
-                f'<div class="rw">{escape(tip["context"])}<br>{escape("추천 이유: " + tip["reason"])}</div>'
-                f'<div class="ra">{escape("추천 행동: " + tip["action"])}<br>'
-                f'{escape("“" + tip["note"] + "”")}</div></div>')
+
+        def line(label, text):
+            """라벨은 굵게, 내용은 한 줄로 보여 주는 한 행 (DB 텍스트는 이스케이프)."""
+            return f'<div class="ts-row"><b>{label}</b> {escape(text)}</div>' if text else ""
+
+        st.html('<div class="rec table-suggestion"><div class="rt">' + escape(f"{selected}번 테이블 · {tip['nickname']}님")
+                + (f' <span class="tag ok">{escape(tip["tag"])}</span>' if tip["tag"] else "") + '</div>'
+                + line("방문", tip["visit"]) + line("오늘 주문", tip["order"]) + line("취향", tip["taste"])
+                + line("근거", tip["reason"]) + line("추천 행동", tip["action"]) + line("멘트", f"“{tip['note']}”") + '</div>')
 
 
 @st.fragment(run_every=POLL_SECONDS)  # 이 영역만 POLL_SECONDS 초마다 다시 실행해 새 로그인·주문을 확인한다
@@ -349,6 +354,7 @@ def _regular_preferences_body(repo):
     else:
         sec_title("손님 응대 제안", "단골과 특별한 방문 상황이 확인된 손님에게 응대를 제안해요")
         _render_table_map(repo, preferences)
+        return  # 제안 내용은 배치도 오른쪽 패널에만 보여 준다(아래 목록과 중복 방지)
     # 한 안내 안에서 손님별 제안을 읽기 쉽도록 줄바꿈하며, DB 텍스트는 먼저 이스케이프한다.
     body = "".join(f'<div class="rec" style="grid-column:1 / -1"><div class="rt">{escape(card["title"])}</div>'
                    f'<div class="rw">{escape(card["why"])}</div>'

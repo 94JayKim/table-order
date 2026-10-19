@@ -128,14 +128,14 @@ class _FakeSms:
 
     def __init__(self, answers, source="ai"):
         self.s = type("S", (), {"gemini_api_key": "k"})()
-        self.external = type("E", (), {"today": lambda self: {"weather_text": "맑음"}})()
+        self.external = type("E", (), {"today": lambda self: {"weather_text": "맑음", "event_text": "마포 축제"}})()
         self.answers, self.source, self.calls = iter(answers), source, []
 
     def summary(self):
         return {"n": 1}
 
     def _facts(self, summary, info):
-        return {"summary": summary, "weather": info["weather_text"]}
+        return {"summary": summary, "weather": info["weather_text"], "event": info["event_text"]}
 
     def generate(self, keywords, facts):
         self.calls.append(keywords)
@@ -160,8 +160,8 @@ def test_refine_with_gemini_uses_sms_logic_for_sms_and_batch_for_guide(monkeypat
     sms = _FakeSms(["AI 문자"])
     for _ in range(2):
         refined = service.refine_with_gemini(_result(), settings, sms_service=sms)
-    # 문자는 생성 로직을 한 번만 부르고(휴면 키워드+날씨), 묶음 호출에는 문자 카드가 들어가지 않는다.
-    assert sms.calls == [["휴면", "날씨"]] and len(batch) == 1 and [c["title"] for c in batch[0]] == ["인기 메뉴"]
+    # 문자는 생성 로직을 한 번만 부르고(휴면 키워드+날씨+행사), 묶음 호출에는 문자 카드가 들어가지 않는다.
+    assert sms.calls == [["휴면", "날씨", "행사"]] and len(batch) == 1 and [c["title"] for c in batch[0]] == ["인기 메뉴"]
     assert refined["items"][0]["sms_body"] == "AI 문자" and refined["items"][0]["source"] == "ai"
     assert refined["items"][1]["action"] == "AI 할 일"
     # 생성 로직이 템플릿으로 떨어지면 규칙 문구를 유지한다.

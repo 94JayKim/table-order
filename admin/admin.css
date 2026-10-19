@@ -310,3 +310,6 @@ button:focus-visible { outline: 3px solid rgba(232,89,12,.4) !important; outline
 @media (max-width: 760px) {
   .dashboard-panels { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* 손님 응대 제안은 10초마다 조용히 다시 확인(폴링)하므로, 그동안 화면이 흐려지지 않게 한다 */
+.st-key-mk_live [data-stale="true"], .st-key-mk_live[data-stale="true"] { opacity: 1 !important; transition: none !important; }
